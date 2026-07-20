@@ -7,12 +7,14 @@ defaults:
   - tofu_dlm_metrics:
     - forget_Q_A_Prob
     - forget_Q_A_ROUGE
+    - forget_Truth_Ratio
     - retain_Q_A_Prob
     - retain_Q_A_ROUGE
     - ra_Q_A_Prob
     - ra_Q_A_ROUGE
     - wf_Q_A_Prob
     - wf_Q_A_ROUGE
+    - model_utility
 
 handler: TOFUEvaluator
 output_dir: ${paths.output_dir}

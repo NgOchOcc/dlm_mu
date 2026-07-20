@@ -13,6 +13,8 @@ EVAL_DIR = Path("saves/eval")
 OUT_CSV = EVAL_DIR / "tofu_results_summary.csv"
 
 METRIC_COLS = [
+    "model_utility",
+    "forget_truth_ratio",
     "forget_Q_A_Prob",
     "forget_Q_A_ROUGE",
     "retain_Q_A_Prob",
@@ -22,6 +24,9 @@ METRIC_COLS = [
     "wf_Q_A_Prob",
     "wf_Q_A_ROUGE",
 ]
+
+# Reported as-is (rounded), not rescaled to a percentage.
+RAW_COLS = {"forget_truth_ratio"}
 
 METHOD_ORDER = {
     "base": 0, "full": 1, "full_cont": 2,
@@ -57,7 +62,12 @@ def main():
         row = {"model": model, "method": method}
         for col in METRIC_COLS:
             val = data.get(col, "")
-            row[col] = round(val * 100, 2) if isinstance(val, (int, float)) else ""
+            if not isinstance(val, (int, float)):
+                row[col] = ""
+            elif col in RAW_COLS:
+                row[col] = round(val, 4)
+            else:
+                row[col] = round(val * 100, 2)
         rows.append(row)
 
     rows.sort(key=lambda r: (r["model"], METHOD_ORDER.get(r["method"], 99)))

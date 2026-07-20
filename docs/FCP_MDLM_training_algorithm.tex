@@ -1,0 +1,330 @@
+\documentclass[11pt]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb,mathtools,bm}
+\usepackage{booktabs}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage{xcolor}
+\usepackage{microtype}
+\usepackage[hidelinks]{hyperref}
+
+\newcommand{\Df}{\mathcal{D}_{\mathrm{f}}}
+\newcommand{\Dr}{\mathcal{D}_{\mathrm{r}}}
+\newcommand{\V}{\mathcal{V}}
+\newcommand{\A}{\mathcal{A}}
+\newcommand{\KL}{D_{\mathrm{KL}}}
+\newcommand{\Ber}{\operatorname{Bern}}
+\newcommand{\relu}[1]{\left[#1\right]_{+}}
+\newcommand{\stopgrad}{\operatorname{sg}}
+\newcommand{\FCP}{\textsc{FCP-MDLM}}
+
+\title{Training Algorithms for Fact-wise Counterfactual Projection in Masked Diffusion Language Models}
+\author{}
+\date{}
+
+\begin{document}
+\maketitle
+
+\section{Problem Setup}
+
+Let $\theta_0$ denote the original masked diffusion language model (MDLM) trained on both retain and forget data. Let $\theta_b$ denote a checkpoint obtained before the model was exposed to the forget facts, and let $\theta$ denote the model being unlearned. For a prompt $x$, a partially masked response state $s$, and a masked position $i$, the model predicts
+\begin{equation}
+    p_{\theta,i}(v\mid x,s), \qquad v\in\V.
+\end{equation}
+
+The forget set is organized into facts $\{F_j\}_{j=1}^{J}$. Each fact has a set of semantic views, such as question--answer formulations, and a small fixed bank of MDLM states. The default state bank contains:
+\begin{align}
+    s^{\mathrm{recall}}(y)
+    &= [\mathrm{MASK}]^{|y|}, \\
+    s^{\mathrm{infill}}(y,K)
+    &= \bigl(y_{\bar K},[\mathrm{MASK}]_{K}\bigr),
+\end{align}
+where $K$ is the fact-bearing span.
+
+For each forget atom
+\begin{equation}
+    a=(x,s,i,y_i),
+\end{equation}
+we define a target-probability cap $\rho_a$. In counterfactual data-unlearning mode,
+\begin{equation}
+    \rho_a^{\mathrm{cf}}
+    = p_{\theta_b,i}(y_i\mid x,s).
+\end{equation}
+If stricter knowledge erasure is required, use
+\begin{equation}
+    \rho_a
+    = \min\!\left\{\rho_a^{\mathrm{cf}},\bar\rho_a\right\}.
+\end{equation}
+
+\section{One-sided Minimum-change Projection Loss}
+
+Let
+\begin{equation}
+    p_a(\theta)
+    := p_{\theta,i}(y_i\mid x,s).
+\end{equation}
+We require $p_a(\theta)\leq \rho_a$. The minimum-KL projection of a categorical distribution $p$ onto the set $\{q:q_{y_i}\leq\rho_a\}$ changes only the target probability and preserves the relative odds among all alternatives. Its scalar loss is
+\begin{equation}
+\label{eq:projection-loss}
+    \ell_{\rho_a}\!\left(p_a(\theta)\right)
+    =
+    \begin{cases}
+        0,
+        & p_a(\theta)\leq\rho_a, \\
+        \rho_a\log\dfrac{\rho_a}{p_a(\theta)}
+        +(1-\rho_a)\log\dfrac{1-\rho_a}{1-p_a(\theta)},
+        & p_a(\theta)>\rho_a.
+    \end{cases}
+\end{equation}
+Equivalently, the active branch is
+\begin{equation}
+    \KL\!\left(
+        \Ber(\rho_a)
+        \;\middle\|\;
+        \Ber(p_a(\theta))
+    \right).
+\end{equation}
+If $m_a$ is the target-versus-rest log-odds and $p_a=\sigma(m_a)$, then on the active branch
+\begin{equation}
+    \frac{\partial \ell_{\rho_a}}{\partial m_a}
+    = p_a-\rho_a.
+\end{equation}
+Thus, the gradient decreases smoothly to zero at the desired forgetting boundary and does not continue suppressing the token after the cap is met.
+
+\section{Fact-wise Forgetting Constraints}
+
+For fact $F_j$, let $\A_j$ be the set of all monitored atoms across supplied semantic views, recall states, infill states, and selected fact-bearing positions. Define
+\begin{equation}
+\label{eq:fact-constraint}
+    \mathcal{F}_j(\theta)
+    = \max_{a\in\A_j}
+      \ell_{\rho_a}\!\left(p_a(\theta)\right).
+\end{equation}
+The constraint
+\begin{equation}
+    \mathcal{F}_j(\theta)\leq\delta_j
+\end{equation}
+requires every monitored atom of fact $j$ to satisfy the desired forgetting tolerance. Unlike an average forget loss, one easy fact cannot compensate for another fact that remains strongly memorized.
+
+\section{Retain-behavior Objective}
+
+The retain objective preserves the original MDLM distribution on retained examples:
+\begin{equation}
+\label{eq:retain-loss}
+\begin{aligned}
+    \mathcal{R}_{\mathrm{retain}}(\theta,\theta_0)
+    = \mathbb{E}_{\substack{(x_r,y_r)\sim\Dr\\M\sim Q_r}}
+    \left[
+        \frac{1}{|M|}
+        \sum_{i\in M}
+        \KL\!\left(
+            p_{\theta_0,i}(\cdot\mid x_r,s_M^{y_r})
+            \;\middle\|\;
+            p_{\theta,i}(\cdot\mid x_r,s_M^{y_r})
+        \right)
+    \right].
+\end{aligned}
+\end{equation}
+Teacher logits from $\theta_0$ may be cached on a fixed retain-mask bank to remove the online teacher forward pass.
+
+The constrained training problem is
+\begin{equation}
+\label{eq:main-objective}
+\boxed{
+\begin{aligned}
+    \min_{\theta}\quad
+    & \mathcal{R}_{\mathrm{retain}}(\theta,\theta_0) \\
+    \text{subject to}\quad
+    & \mathcal{F}_j(\theta)\leq\delta_j,
+      \qquad j=1,\ldots,J.
+\end{aligned}
+}
+\end{equation}
+
+\section{Precomputation of Counterfactual Caps}
+
+Define the target-versus-rest log-odds
+\begin{equation}
+    m_{\theta}(a)
+    = z_{\theta,i}(y_i\mid x,s)
+      - \log\sum_{v\neq y_i}\exp z_{\theta,i}(v\mid x,s).
+\end{equation}
+The acquired-evidence score is
+\begin{equation}
+    d(a)
+    = \relu{m_{\theta_0}(a)-m_{\theta_b}(a)}.
+\end{equation}
+This score is a checkpoint-based attribution proxy. It identifies positions whose target evidence increased after exposure to the forget data.
+
+For each fact, one may retain all non-prompt-copied target atoms, or select the shortest prefix of atoms sorted by $d(a)$ that covers a chosen fraction $\kappa$ of total acquired evidence.
+
+\begin{algorithm}[t]
+\caption{Counterfactual atom-bank and cap construction}
+\label{alg:precompute}
+\begin{algorithmic}[1]
+\Require Original model $\theta_0$; pre-exposure checkpoint $\theta_b$; forget facts $\{F_j\}_{j=1}^{J}$; evidence coverage $\kappa\in(0,1]$; optional strict caps $\{\bar\rho_a\}$.
+\Ensure Fact atom banks $\{\A_j\}$ and scalar caps $\{\rho_a\}$.
+\For{$j=1,\ldots,J$}
+    \State $\A_j^{\mathrm{cand}}\gets\varnothing$
+    \ForAll{provided semantic views $(x,y)$ of fact $F_j$}
+        \State Construct $s^{\mathrm{recall}}(y)$ and $s^{\mathrm{infill}}(y,K)$.
+        \ForAll{state $s\in\{s^{\mathrm{recall}},s^{\mathrm{infill}}\}$}
+            \State Run frozen forward passes of $\theta_0$ and $\theta_b$ on $(x,s)$.
+            \ForAll{fact-bearing masked positions $i$ not copied from the prompt}
+                \State $a\gets(x,s,i,y_i)$.
+                \State $d(a)\gets\relu{m_{\theta_0}(a)-m_{\theta_b}(a)}$.
+                \State $\rho_a^{\mathrm{cf}}\gets p_{\theta_b,i}(y_i\mid x,s)$.
+                \If{strict-erasure mode is enabled}
+                    \State $\rho_a\gets\min\{\rho_a^{\mathrm{cf}},\bar\rho_a\}$.
+                \Else
+                    \State $\rho_a\gets\rho_a^{\mathrm{cf}}$.
+                \EndIf
+                \State Add $(a,d(a),\rho_a)$ to $\A_j^{\mathrm{cand}}$.
+            \EndFor
+        \EndFor
+    \EndFor
+    \State Sort $\A_j^{\mathrm{cand}}$ by $d(a)$ in descending order.
+    \State Let $\A_j$ be the shortest prefix satisfying
+    \Statex \hspace{1.5em}$\displaystyle
+        \sum_{a\in\A_j}d(a)
+        \geq
+        \kappa\sum_{a\in\A_j^{\mathrm{cand}}}d(a)$.
+    \If{the total acquired evidence is zero}
+        \State Set $\A_j\gets\A_j^{\mathrm{cand}}$ or mark $F_j$ as already counterfactual.
+    \EndIf
+\EndFor
+\State \Return $\{\A_j\}_{j=1}^{J}$ and $\{\rho_a\}$.
+\end{algorithmic}
+\end{algorithm}
+
+\section{Primal--Dual Training}
+
+Introduce one nonnegative multiplier $\lambda_j$ for each fact. The Lagrangian is
+\begin{equation}
+\label{eq:lagrangian}
+    \mathcal{L}(\theta,\bm\lambda)
+    = \mathcal{R}_{\mathrm{retain}}(\theta,\theta_0)
+      + \frac{1}{J}\sum_{j=1}^{J}
+        \lambda_j\bigl(\mathcal{F}_j(\theta)-\delta_j\bigr),
+    \qquad \lambda_j\geq0.
+\end{equation}
+The primal and dual updates are
+\begin{align}
+    \theta
+    &\leftarrow
+    \theta-
+    \eta_{\theta}\nabla_{\theta}
+    \mathcal{L}(\theta,\bm\lambda),
+    \\
+    \lambda_j
+    &\leftarrow
+    \relu{
+        \lambda_j+
+        \eta_{\lambda}\bigl(\mathcal{F}_j(\theta)-\delta_j\bigr)
+    }.
+\end{align}
+Facts that already satisfy their caps receive no projection gradient. Facts that remain violated automatically receive stronger dual pressure.
+
+\begin{algorithm}[t]
+\caption{\FCP{} training}
+\label{alg:training}
+\begin{algorithmic}[1]
+\Require Initial model $\theta_0$; retain data $\Dr$; atom banks $\{\A_j\}$; caps $\{\rho_a\}$; tolerances $\{\delta_j\}$; primal learning rate $\eta_{\theta}$; dual learning rate $\eta_{\lambda}$; feasibility-check period $T_{\mathrm{check}}$; patience $P$.
+\Ensure Unlearned model $\theta$.
+\State $\theta\gets\theta_0$.
+\State Initialize $\lambda_j\geq0$ for all $j$.
+\State $c_{\mathrm{feasible}}\gets0$.
+\For{$t=1,2,\ldots,T_{\max}$}
+    \State Sample a minibatch of fact indices $\mathcal{B}_f\subseteq\{1,\ldots,J\}$.
+    \State Pack all required recall/infill states for $\{\A_j:j\in\mathcal{B}_f\}$ into one MDLM minibatch.
+    \State Run one student forward pass and obtain $p_a(\theta)$ for every sampled atom.
+    \ForAll{$j\in\mathcal{B}_f$}
+        \State $\displaystyle
+        \widehat{\mathcal{F}}_j
+        \gets
+        \max_{a\in\A_j}
+        \ell_{\rho_a}\!\left(p_a(\theta)\right)$.
+        \Comment{Eq.~\eqref{eq:fact-constraint}}
+    \EndFor
+    \State Sample a retain minibatch and a standard random mask pattern.
+    \State Compute $\widehat{\mathcal{R}}_{\mathrm{retain}}$ using Eq.~\eqref{eq:retain-loss}.
+    \State $\displaystyle
+    \widehat{\mathcal{L}}
+    \gets
+    \widehat{\mathcal{R}}_{\mathrm{retain}}
+    +\frac{1}{|\mathcal{B}_f|}
+    \sum_{j\in\mathcal{B}_f}
+    \lambda_j\bigl(\widehat{\mathcal{F}}_j-\delta_j\bigr)$.
+    \State Update $\theta\gets\theta-\eta_{\theta}\nabla_{\theta}\widehat{\mathcal{L}}$.
+    \ForAll{$j\in\mathcal{B}_f$}
+        \State $\displaystyle
+        \lambda_j
+        \gets
+        \relu{
+            \lambda_j+
+            \eta_{\lambda}
+            \bigl(\stopgrad(\widehat{\mathcal{F}}_j)-\delta_j\bigr)
+        }$.
+    \EndFor
+    \If{$t\bmod T_{\mathrm{check}}=0$}
+        \State Evaluate every $\mathcal{F}_j(\theta)$ on the complete fixed atom bank.
+        \If{$\mathcal{F}_j(\theta)\leq\delta_j$ for all $j$}
+            \State $c_{\mathrm{feasible}}\gets c_{\mathrm{feasible}}+1$.
+        \Else
+            \State $c_{\mathrm{feasible}}\gets0$.
+        \EndIf
+        \If{$c_{\mathrm{feasible}}\geq P$}
+            \State \textbf{break}
+        \EndIf
+    \EndIf
+\EndFor
+\State \Return $\theta$.
+\end{algorithmic}
+\end{algorithm}
+
+\section{Optional Strict-cap Calibration}
+
+Suppose a fact-bearing span contains $q$ selected positions and the desired exact-span probability at a fixed MDLM state is at most $\varepsilon_j$. A uniform per-position cap can be chosen as
+\begin{equation}
+    \bar\rho_a=\varepsilon_j^{1/q}.
+\end{equation}
+Under the standard factorized MDLM prediction head,
+\begin{equation}
+    p_{\theta}(y_K\mid x,s)
+    = \prod_{i\in K}p_{\theta,i}(y_i\mid x,s).
+\end{equation}
+Therefore, if every selected position satisfies $p_{\theta,i}(y_i\mid x,s)\leq\varepsilon_j^{1/q}$, then
+\begin{equation}
+    p_{\theta}(y_K\mid x,s)\leq\varepsilon_j.
+\end{equation}
+This is a fixed-state exact-span guarantee; it is not a certificate for every iterative decoding trajectory or unseen semantic formulation.
+
+\section{Implementation Notes}
+
+\paragraph{No adversarial inner loop.}
+The training algorithm uses a fixed recall/infill state bank. It requires no mask restarts, embedding-gradient attack, discrete swaps, or repeated candidate evaluation.
+
+\paragraph{Fact batching.}
+Facts should be sampled uniformly rather than sampling individual atoms uniformly. This prevents facts with many views or long answers from dominating training.
+
+\paragraph{Hard maximum.}
+The core method uses a hard maximum over atoms of each fact. A top-$s$ mean or log-sum-exp relaxation may improve optimization stability, but should be treated as an ablation because it weakens the exact per-fact interpretation.
+
+\paragraph{Teacher caching.}
+The pre-exposure model $\theta_b$ is used only during offline cap construction. The original retain teacher $\theta_0$ can also be removed from the online loop by caching its logits on a fixed retain-mask bank.
+
+\paragraph{Stopping criterion.}
+Training should stop according to complete-bank feasibility rather than a fixed epoch count. Report the fact pass rate
+\begin{equation}
+    \operatorname{FactPassRate}(\theta)
+    = \frac{1}{J}
+      \sum_{j=1}^{J}
+      \mathbf{1}\!\left[\mathcal{F}_j(\theta)\leq\delta_j\right],
+\end{equation}
+together with the maximum and upper quantiles of $\{\mathcal{F}_j(\theta)\}_{j=1}^{J}$.
+
+\paragraph{Scope of the claim.}
+The algorithm enforces forgetting over the declared semantic views, token positions, and MDLM state bank. Held-out paraphrases, alternative mask geometries, decoding schedules, membership-inference probes, and relearning attacks should be evaluated separately.
+
+\end{document}

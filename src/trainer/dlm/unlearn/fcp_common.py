@@ -26,7 +26,7 @@ def target_vs_rest_logodds(logits, positions, target_tokens):
     Returns:
         (n,) target-versus-rest log-odds m at each requested position.
     """
-    z = logits[positions]  # (n, V)
+    z = logits[positions].float()  # (n, V); upcast the small slice for precision
     tgt = z.gather(1, target_tokens.unsqueeze(1)).squeeze(1)  # (n,)
     # logsumexp over all v, then subtract the target's contribution.
     lse_all = torch.logsumexp(z, dim=1)  # (n,)
@@ -37,7 +37,7 @@ def target_vs_rest_logodds(logits, positions, target_tokens):
 
 def target_prob(logits, positions, target_tokens):
     """p_a = softmax(z_i)[y_i] at each requested position. Shapes as above."""
-    z = logits[positions]  # (n, V)
+    z = logits[positions].float()  # (n, V); upcast the small slice for precision
     logp = F.log_softmax(z, dim=-1)
     return logp.gather(1, target_tokens.unsqueeze(1)).squeeze(1).exp()  # (n,)
 

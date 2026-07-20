@@ -6,6 +6,7 @@ from trainer.dlm.unlearn.simnpo import DiffusionSimNPO
 from trainer.dlm.unlearn.wga import DiffusionWGA
 from trainer.dlm.unlearn.null_anchor import DiffusionNullAnchor
 from trainer.dlm.unlearn.amtu import DiffusionAMTU
+from trainer.dlm.unlearn.fcp import DiffusionFCP
 
 __all__ = [
     "DiffusionUnlearnTrainer",
@@ -16,4 +17,5 @@ __all__ = [
     "DiffusionWGA",
     "DiffusionNullAnchor",
     "DiffusionAMTU",
+    "DiffusionFCP",
 ]

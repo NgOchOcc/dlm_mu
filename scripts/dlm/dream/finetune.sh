@@ -30,7 +30,7 @@ holdout_split=holdout10
 
 per_device_train_batch_size=4
 gradient_accumulation_steps=4
-num_train_epochs=75
+num_train_epochs=100
 
 
 # Continue training from an existing SFT checkpoint (loads weights only; fresh
@@ -38,7 +38,7 @@ num_train_epochs=75
 # from the raw instruct model. When set, task_name gets a _cont suffix so the
 # original checkpoint is NOT overwritten. Set num_train_epochs above to the
 # number of ADDITIONAL epochs you want.
-CONTINUE_FROM="saves/finetune/tofu_Dream-v0-Instruct-7B_full_cont"
+CONTINUE_FROM="saves/finetune/tofu_Dream-v0-Instruct-7B_full_cont/checkpoint-4725"
 task_name=tofu_${MODEL}_full
 MODEL_OVERRIDE=""
 if [ -n "${CONTINUE_FROM}" ]; then

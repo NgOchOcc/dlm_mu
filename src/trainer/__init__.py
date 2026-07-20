@@ -27,6 +27,7 @@ from trainer.dlm.unlearn import (
     DiffusionWGA,
     DiffusionNullAnchor,
     DiffusionAMTU,
+    DiffusionFCP,
 )
 
 
@@ -128,3 +129,4 @@ _register_trainer(DiffusionSimNPO)
 _register_trainer(DiffusionWGA)
 _register_trainer(DiffusionNullAnchor)
 _register_trainer(DiffusionAMTU)
+_register_trainer(DiffusionFCP)
