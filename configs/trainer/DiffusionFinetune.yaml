@@ -1,0 +1,35 @@
+# Masked diffusion language modeling finetune trainer (Dream, LLaDA).
+# DLM counterpart of trainer/finetune.yaml.
+handler: DiffusionFinetuneTrainer
+args:
+  per_device_train_batch_size: 4
+  per_device_eval_batch_size: 8
+  gradient_accumulation_steps: 4
+  learning_rate: 1e-5
+  bf16: True
+  bf16_full_eval: True
+  logging_steps: 5
+  output_dir: ${paths.output_dir}
+  logging_dir: ${trainer.args.output_dir}/logs
+  report_to: tensorboard
+  ddp_find_unused_parameters: None
+  gradient_checkpointing: False
+  optim: adamw_torch
+  save_strategy: 'no'
+  save_only_model: True
+  weight_decay: 0.00
+  do_train: True
+  do_eval: True
+  eval_on_start: True
+  eval_strategy: epoch
+  num_train_epochs: 10
+  seed: 0
+  # DLM forward takes only input_ids/attention_mask; keep `labels` from being dropped.
+  remove_unused_columns: False
+method_args:
+  # Set right_shift_logits: True and loss_weight_type: "cart[geo_p:0.3]" for Dream.
+  scheduler_name: LinearAlphaScheduler
+  time_epsilon: 1e-3
+  loss_weight_type: scheduler
+  loss_norm_type: token
+  right_shift_logits: False

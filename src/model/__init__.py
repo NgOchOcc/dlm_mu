@@ -42,6 +42,11 @@ def get_model(model_cfg: DictConfig):
     assert model_cfg is not None and model_cfg.model_args is not None, ValueError(
         "Model config not found or model_args absent in configs/model."
     )
+    # Diffusion LMs (Dream, LLaDA) are loaded via a separate code path; see model/dlm.py.
+    if model_cfg.get("model_type", None) == "dlm":
+        from model.dlm import get_dlm_model
+
+        return get_dlm_model(model_cfg)
     model_args = model_cfg.model_args
     tokenizer_args = model_cfg.tokenizer_args
     torch_dtype = get_dtype(model_args)

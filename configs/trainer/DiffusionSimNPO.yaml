@@ -1,0 +1,10 @@
+defaults:
+  - DiffusionGradDiff
+
+handler: DiffusionSimNPO
+method_args:
+  delta: 0.0
+  beta: 0.1
+  gamma: 1.0
+  alpha: 1.0
+  retain_loss_type: NLL

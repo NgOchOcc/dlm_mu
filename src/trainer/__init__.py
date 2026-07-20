@@ -1,6 +1,6 @@
 import torch
 from typing import Dict, Any
-from omegaconf import DictConfig
+from omegaconf import DictConfig, OmegaConf
 from transformers import Trainer, TrainingArguments
 
 from trainer.base import FinetuneTrainer
@@ -16,6 +16,19 @@ from trainer.unlearn.satimp import SatImp
 from trainer.unlearn.wga import WGA
 from trainer.unlearn.pdu import PDU
 
+# Diffusion Language Model (DLM) trainers — kept in the trainer.dlm subpackage,
+# separate from the autoregressive LLM trainers above.
+from trainer.dlm import DiffusionFinetuneTrainer
+from trainer.dlm.unlearn import (
+    DiffusionGradAscent,
+    DiffusionGradDiff,
+    DiffusionNPO,
+    DiffusionSimNPO,
+    DiffusionWGA,
+    DiffusionNullAnchor,
+    DiffusionAMTU,
+)
+
 
 import logging
 
@@ -29,7 +42,13 @@ def _register_trainer(trainer_class):
 
 
 def load_trainer_args(trainer_args: DictConfig, dataset):
-    trainer_args = dict(trainer_args)
+    # Fully convert to plain Python containers: nested OmegaConf nodes (e.g.
+    # gradient_checkpointing_kwargs) would otherwise reach TrainingArguments as
+    # DictConfig and break its JSON serialization.
+    if isinstance(trainer_args, DictConfig):
+        trainer_args = OmegaConf.to_container(trainer_args, resolve=True)
+    else:
+        trainer_args = dict(trainer_args)
     warmup_epochs = trainer_args.pop("warmup_epochs", None)
     if warmup_epochs:
         batch_size = trainer_args["per_device_train_batch_size"]
@@ -99,3 +118,13 @@ _register_trainer(CEU)
 _register_trainer(SatImp)
 _register_trainer(WGA)
 _register_trainer(PDU)
+
+# Register DLM Trainers
+_register_trainer(DiffusionFinetuneTrainer)
+_register_trainer(DiffusionGradAscent)
+_register_trainer(DiffusionGradDiff)
+_register_trainer(DiffusionNPO)
+_register_trainer(DiffusionSimNPO)
+_register_trainer(DiffusionWGA)
+_register_trainer(DiffusionNullAnchor)
+_register_trainer(DiffusionAMTU)

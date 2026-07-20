@@ -1,0 +1,31 @@
+# @package eval.tofu_dlm
+# Masked-diffusion (Dream, LLaDA) counterpart of eval/tofu.yaml. Reuses the TOFU
+# evaluator and datasets, but the model-dependent metrics use the DLM handlers
+# (probability_diffusion / rouge_diffusion). Evaluates rougeL + probability on
+# four splits: forget10, retain90, real_authors (ra), world_facts (wf).
+defaults:
+  - tofu_dlm_metrics:
+    - forget_Q_A_Prob
+    - forget_Q_A_ROUGE
+    - retain_Q_A_Prob
+    - retain_Q_A_ROUGE
+    - ra_Q_A_Prob
+    - ra_Q_A_ROUGE
+    - wf_Q_A_Prob
+    - wf_Q_A_ROUGE
+
+handler: TOFUEvaluator
+output_dir: ${paths.output_dir}
+metrics: {}
+overwrite: false
+forget_split: forget10
+holdout_split: holdout10
+retain_logs_path: null
+question_key: "question"
+batch_size: 8
+
+# Diffusion-specific knobs consumed by the DLM metric handlers.
+scheduler_name: LinearAlphaScheduler
+mc_num: 128
+time_epsilon: 1e-3
+right_shift_logits: False  # set True for Dream

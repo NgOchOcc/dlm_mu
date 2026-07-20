@@ -1,0 +1,16 @@
+# @package eval.tofu_dlm.metrics.retain_Q_A_Prob
+defaults:
+  - ../../data/datasets@datasets: TOFU_QA_retain_eval
+  - ../../collator@collators: DataCollatorForSupervisedDatasetwithIndex
+
+handler: probability_diffusion
+batch_size: ${eval.tofu_dlm.batch_size}
+scheduler_name: ${eval.tofu_dlm.scheduler_name}
+mc_num: ${eval.tofu_dlm.mc_num}
+time_epsilon: ${eval.tofu_dlm.time_epsilon}
+right_shift_logits: ${eval.tofu_dlm.right_shift_logits}
+
+datasets:
+  TOFU_QA_retain_eval:
+    args:
+      question_key: ${eval.tofu_dlm.question_key}

@@ -1,0 +1,8 @@
+# Masked-diffusion (Dream, LLaDA) generation args for the MDLMSampler.
+# Matches the MDU benchmark (eval_tofu_llada.py): steps=256, max_new_tokens=128,
+# greedy (temperature=0), low-confidence remasking.
+max_new_tokens: 128
+steps: 256
+block_size: 128
+temperature: 0.0
+remasking: low_confidence

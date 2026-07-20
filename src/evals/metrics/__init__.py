@@ -22,6 +22,10 @@ from evals.metrics.utility import (
     hm_aggregate,
     classifier_prob,
 )
+from evals.metrics.dlm_memorization import (
+    probability_diffusion,
+    rouge_diffusion,
+)
 
 METRICS_REGISTRY: Dict[str, UnlearningMetric] = {}
 
@@ -73,3 +77,7 @@ _register_metric(mia_reference)
 
 # Register Utility metrics
 _register_metric(classifier_prob)
+
+# Register DLM (masked diffusion) metrics
+_register_metric(probability_diffusion)
+_register_metric(rouge_diffusion)

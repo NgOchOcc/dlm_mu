@@ -1,0 +1,39 @@
+# @package _global_
+# Masked-diffusion (LLaDA/Dream) full-finetune on TOFU — produces the "Base"
+# (target) model that unlearning starts from. DLM counterpart of
+# experiment/finetune/tofu/default.yaml: swaps in a diffusion backbone, the
+# DiffusionFinetune trainer, and the tofu_dlm eval suite. Trains on TOFU_QA_full
+# (retain + forget), the same data the AR target model is finetuned on.
+defaults:
+  - override /model: LLaDA-8B-Instruct
+  - override /trainer: DiffusionFinetune
+  - override /data/datasets@data.train: TOFU_QA_full
+  - override /eval: tofu_dlm
+
+mode: finetune
+
+forget_split: forget10
+holdout_split: holdout10
+retain_logs_path: null
+
+# Dream needs right-shifted logits and CART loss weighting; LLaDA does not.
+# For Dream, also set `override /model: Dream-v0-Instruct-7B` above and add:
+#   trainer.method_args.right_shift_logits: True
+#   trainer.method_args.loss_weight_type: "cart[geo_p:0.3]"
+#   eval.tofu_dlm.right_shift_logits: True
+
+eval:
+  tofu_dlm:
+    forget_split: ${forget_split}
+    holdout_split: ${holdout_split}
+    retain_logs_path: ${retain_logs_path}
+    overwrite: true
+
+trainer:
+  args:
+    learning_rate: 1e-5
+    weight_decay: 0.01
+    warmup_epochs: 1.0
+    num_train_epochs: 5
+
+task_name: tofu_LLaDA-8B-Instruct_full

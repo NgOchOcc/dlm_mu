@@ -1,0 +1,12 @@
+# Diffusion Language Model config (Dream-7B-Instruct).
+# Loaded via model/dlm.py (dllm package), not the autoregressive AutoModelForCausalLM path.
+model_type: dlm
+model_args:
+  pretrained_model_name_or_path: "Dream-org/Dream-v0-Instruct-7B"
+  torch_dtype: bfloat16
+tokenizer_args:
+  pretrained_model_name_or_path: "Dream-org/Dream-v0-Instruct-7B"
+template_args:
+  apply_chat_template: True
+  # No system prompt — matches the MDU benchmark (user-only chat template).
+  system_prompt: null

@@ -1,0 +1,18 @@
+# @package eval.tofu_dlm.metrics.forget_Q_A_PERT_Prob
+defaults:
+  - ../../data/datasets@datasets: TOFU_QA_forget_pert
+  - ../../collator@collators: DataCollatorForSupervisedDatasetwithIndex
+
+handler: probability_diffusion
+batch_size: ${eval.tofu_dlm.batch_size}
+scheduler_name: ${eval.tofu_dlm.scheduler_name}
+mc_num: ${eval.tofu_dlm.mc_num}
+time_epsilon: ${eval.tofu_dlm.time_epsilon}
+right_shift_logits: ${eval.tofu_dlm.right_shift_logits}
+
+datasets:
+  TOFU_QA_forget_pert:
+    args:
+      hf_args:
+        name: ${eval.tofu_dlm.forget_split}_perturbed
+      question_key: ${eval.tofu_dlm.question_key}
