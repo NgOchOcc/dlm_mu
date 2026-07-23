@@ -1,0 +1,15 @@
+# @package eval.tofu_dlm.metrics.extraction_strength
+defaults:
+  - ../../data/datasets@datasets: TOFU_QA_forget
+  - ../../collator@collators: DataCollatorForSupervisedDatasetwithIndex
+
+handler: extraction_strength_diffusion
+batch_size: ${eval.tofu_dlm.batch_size}
+right_shift_logits: ${eval.tofu_dlm.right_shift_logits}
+
+datasets:
+  TOFU_QA_forget:
+    args:
+      hf_args:
+        name: ${eval.tofu_dlm.forget_split}_perturbed
+      question_key: ${eval.tofu_dlm.question_key}

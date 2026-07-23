@@ -1,0 +1,12 @@
+# @package eval.tofu_dlm.metrics.memorization_score
+# Memorization Score = HM(1 - ES, 1 - EM, 1 - Para. Prob., 1 - Truth Ratio).
+# Pre-compute names match the top-level metric names so the evaluator reuses their
+# cached results instead of recomputing. Keep this metric listed AFTER its four
+# components in eval/tofu_dlm.yaml so they populate the cache first.
+defaults:
+  - .@pre_compute.extraction_strength: extraction_strength
+  - .@pre_compute.exact_memorization: exact_memorization
+  - .@pre_compute.forget_Q_A_PARA_Prob: forget_Q_A_PARA_Prob
+  - .@pre_compute.forget_Truth_Ratio: forget_Truth_Ratio
+
+handler: hm_complement_aggregate

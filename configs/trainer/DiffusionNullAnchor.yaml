@@ -1,9 +1,0 @@
-defaults:
-  - DiffusionGradDiff
-
-handler: DiffusionNullAnchor
-method_args:
-  tau: 1.0
-  gamma: 1.0
-  alpha: 1.0
-  retain_loss_type: NLL

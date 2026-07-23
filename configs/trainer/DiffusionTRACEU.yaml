@@ -1,0 +1,22 @@
+defaults:
+  - DiffusionFinetune
+
+# TRACE-U: Trajectory-level Reinforcement Unlearning (docs/trace_u_training_algorithm.tex).
+# On-policy forget KL to a frozen *scrubbed* anchor (theta_0 with the forget target
+# removed from prompt + state), entropic-risk batch reweighting (kappa), ratio-free
+# proximal projection (eta_prox), and a retain-KL constraint handled by an augmented
+# Lagrangian (single dual lambda). Single masked-state approximation (T=1) with G
+# on-policy proposals per example, consistent with the other DLM unlearning trainers.
+# Set right_shift_logits: True and loss_weight_type: "cart[geo_p:0.3]" for Dream.
+handler: DiffusionTRACEU
+method_args:
+  kappa: 1.0          # entropic-risk coefficient (>0); larger => focus on hard cases
+  gamma: 0.5          # anchor temperature exponent in [0,1] (Temp_gamma)
+  eta_prox: 0.3       # proximal coefficient (>0)
+  epsilon_R: 0.05     # retain-KL budget in the augmented Lagrangian
+  eta_lambda: 1e-2    # dual ascent step size for lambda
+  lambda_init: 0.1    # initial retain dual
+  num_rollouts: 4     # on-policy proposals G per forget example (>=2)
+  eps_sup: 1e-6       # anchor support smoothing
+  scrub_prompt: True  # mask prompt positions in the anchor state (m_F)
+  scrub_answer: True  # mask answer positions in the anchor state (S_F)

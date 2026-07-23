@@ -1,0 +1,15 @@
+defaults:
+  - DiffusionFinetune
+
+# DDU: Denoising Decontamination Unlearning, Phase 2 (docs/ddu_training_algorithms_tofu_muse.tex).
+# Distils theta toward the decontaminated target u_R = p_0 * (1 - r_phi), where the
+# frozen responsibility head r_phi comes from Phase 1 (src/precompute_ddu_head.py).
+# head_path must point at the .pt saved by that precompute step.
+# Set right_shift_logits: True and loss_weight_type: "cart[geo_p:0.3]" for Dream.
+handler: DiffusionDDU
+method_args:
+  head_path: ???        # required: saves/unlearn/ddu_head/<task>.pt from Phase 1
+  alpha_prior: 0.1      # original forget prior alpha (TOFU forget10 -> 0.1)
+  top_k: 64             # candidate count K for the responsibility correction
+  ddu_coef: 1.0         # overall multiplier on the DDU loss
+  pi_h: null            # head-training forget prior; null -> read from head meta (0.5)
