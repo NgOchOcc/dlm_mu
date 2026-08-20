@@ -1,0 +1,9 @@
+# RWKU utility: TruthfulQA MC1 (utility_truthfulness). Pick the lowest-NLL
+# choice; higher accuracy is better. Rows carry `mc1_targets{choices,labels}`.
+RWKU_truthfulqa:
+  handler: RWKURawDataset
+  args:
+    hf_args:
+      path: "jinzhuoran/RWKU"
+      name: "utility_truthfulness"
+      split: "test"

@@ -25,8 +25,11 @@ class QADataset(Dataset):
         if few_shot_dataset_hf_args is not None:
             raw_data = load_hf_dataset(**few_shot_dataset_hf_args)
             self.fs_data = {}
-            self.fs_data[question_key] = raw_data[question_key]
-            self.fs_data[answer_key] = raw_data[answer_key]
+            # Newer `datasets` returns a Column (not a list) when indexing by
+            # column name; materialize so `_process_sample` can concatenate the
+            # few-shot prompts with the query via `+`.
+            self.fs_data[question_key] = list(raw_data[question_key])
+            self.fs_data[answer_key] = list(raw_data[answer_key])
         self.template_args = template_args
         self.question_key = question_key
         self.answer_key = answer_key

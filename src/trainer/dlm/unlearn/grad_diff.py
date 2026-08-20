@@ -27,6 +27,6 @@ class DiffusionGradDiff(DiffusionUnlearnTrainer):
             model, inputs["forget"], return_outputs=True
         )
         forget_loss = -forget_loss
-        retain_loss = self.retain_nll(model, inputs["retain"])
+        retain_loss = self.optional_retain_loss(model, inputs)
         loss = self.gamma * forget_loss + self.alpha * retain_loss
         return (loss, forget_outputs) if return_outputs else loss

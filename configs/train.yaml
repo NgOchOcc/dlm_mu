@@ -11,3 +11,10 @@ defaults:
 
 mode: train
 task_name: ???
+
+# Crash-resume. null / false -> fresh run. "auto" (or true) -> resume from the
+# latest checkpoint-* under the run's output_dir if one exists, else start fresh
+# (safe to leave on for every launch). A path -> resume from that exact checkpoint.
+# Requires resumable checkpoints (save_only_model=false), so the optimizer /
+# scheduler / RNG / step state is saved alongside the weights.
+resume_from_checkpoint: null

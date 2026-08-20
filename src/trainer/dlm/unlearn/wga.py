@@ -32,6 +32,6 @@ class DiffusionWGA(DiffusionGradDiff):
         masked = art["masked_mask"].to(token_ce.dtype)
         forget_loss = -(weight_ce * token_ce * masked).sum() / masked.sum().clamp_min(1)
 
-        retain_loss = self.retain_nll(model, inputs["retain"])
+        retain_loss = self.optional_retain_loss(model, inputs)
         loss = self.gamma * forget_loss + self.alpha * retain_loss
         return (loss, art["outputs"]) if return_outputs else loss

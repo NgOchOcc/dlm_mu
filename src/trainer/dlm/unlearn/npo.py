@@ -54,6 +54,6 @@ class DiffusionNPO(DiffusionGradDiff):
             -F.logsigmoid(self.beta * (policy_nll - ref_nll)).mean() * 2 / self.beta
         )
 
-        retain_loss = self.retain_nll(model, inputs["retain"])
+        retain_loss = self.optional_retain_loss(model, inputs)
         loss = self.gamma * forget_loss + self.alpha * retain_loss
         return (loss, art["outputs"]) if return_outputs else loss

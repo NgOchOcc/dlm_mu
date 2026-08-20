@@ -1,0 +1,24 @@
+defaults:
+  - DiffusionGradDiff
+
+handler: DiffusionTSD
+method_args:
+  # mask_states: "pathwise" draws answer-stratified partial masks (k~U{1..|A|});
+  # "single" masks only the fully masked answer (single-state demotion ablation).
+  mask_states: pathwise
+  # demotion: "minimal" demotes only the gold token y_i; "belief" also demotes the
+  # teacher's top-K (belief-demotion ablation for paraphrase leakage).
+  demotion: minimal
+  # belief_top_k: size of the teacher top-K demotion set (used only when demotion=belief).
+  belief_top_k: 5
+  # self_distill: add KL(p0 || p_theta) on non-answer masked positions. Vacuous on
+  # TOFU where A = whole response (no non-answer response positions).
+  self_distill: true
+  # balanced_weight: split weight 1/2 answer / 1/2 non-answer masked decisions.
+  # Reduces to a uniform mean over masked answer positions when A = response.
+  balanced_weight: true
+  # alpha=0 makes TSD retain-free (selective editing carries non-forget behaviour).
+  # Set alpha>0 and supply a retain dataset only for the retain-NLL ablation.
+  alpha: 0.0
+  gamma: 1.0
+  retain_loss_type: NLL

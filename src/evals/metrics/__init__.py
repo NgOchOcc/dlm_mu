@@ -20,11 +20,23 @@ from evals.metrics.mia import (
 )
 from evals.metrics.utility import (
     hm_aggregate,
+    hm_complement_aggregate,
     classifier_prob,
 )
 from evals.metrics.dlm_memorization import (
     probability_diffusion,
     rouge_diffusion,
+    exact_memorization_diffusion,
+    extraction_strength_diffusion,
+)
+from evals.metrics.dlm_rwku import (
+    mmlu_accuracy_diffusion,
+    truthfulqa_mc1_diffusion,
+    triviaqa_em_diffusion,
+)
+from evals.metrics.dlm_llm_judge import (
+    naturalness_diffusion,
+    similarity_diffusion,
 )
 
 METRICS_REGISTRY: Dict[str, UnlearningMetric] = {}
@@ -62,6 +74,7 @@ _register_metric(rouge)
 _register_metric(truth_ratio)
 _register_metric(ks_test)
 _register_metric(hm_aggregate)
+_register_metric(hm_complement_aggregate)
 _register_metric(privleak)
 _register_metric(rel_diff)
 _register_metric(exact_memorization)
@@ -81,3 +94,14 @@ _register_metric(classifier_prob)
 # Register DLM (masked diffusion) metrics
 _register_metric(probability_diffusion)
 _register_metric(rouge_diffusion)
+_register_metric(exact_memorization_diffusion)
+_register_metric(extraction_strength_diffusion)
+
+# Register RWKU utility metrics (DLM)
+_register_metric(mmlu_accuracy_diffusion)
+_register_metric(truthfulqa_mc1_diffusion)
+_register_metric(triviaqa_em_diffusion)
+
+# Register DLM LLM-judge metrics
+_register_metric(naturalness_diffusion)
+_register_metric(similarity_diffusion)

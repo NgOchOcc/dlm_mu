@@ -5,21 +5,27 @@
 # four splits: forget10, retain90, real_authors (ra), world_facts (wf).
 defaults:
   - tofu_dlm_metrics:
-    - retain_Q_A_ROUGE
     - forget_Q_A_ROUGE
+    - retain_Q_A_ROUGE
+    # forget_Q_A_PARA_Prob must precede forget_Truth_Ratio: the truth ratio takes
+    # it as a pre_compute, and pre_computes reuse the cache (metrics/base.py:85)
+    # while requested metrics are always recomputed under overwrite=true
+    # (base.py:91). Listed after, it gets sampled twice -- one 128-sample MC pass
+    # wasted, and the copy logged to TOFU_EVAL.json is not the one the ratio used.
+    - forget_Q_A_PARA_Prob
     - forget_Truth_Ratio
     - retain_Truth_Ratio
-    - forget_Q_A_PARA_Prob
-    - extraction_strength
-    - exact_memorization
-    - model_utility
-    - wf_Q_A_ROUGE
     - ra_Q_A_ROUGE
-    - wf_Q_A_Prob
+    - wf_Q_A_ROUGE
     - forget_Q_A_Prob
     - retain_Q_A_Prob
-    - ra_Q_A_Prob
-    - memorization_score
+
+    # - model_utility
+    # - wf_Q_A_Prob
+    # - ra_Q_A_Prob
+    # - extraction_strength
+    # - exact_memorization
+    # - memorization_score
 
 handler: TOFUEvaluator
 output_dir: ${paths.output_dir}

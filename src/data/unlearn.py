@@ -4,7 +4,7 @@ from torch.utils.data import Dataset
 
 class ForgetRetainDataset(Dataset):
     # https://github.com/OPTML-Group/SOUL/blob/main/src/dataset/Base.py
-    def __init__(self, forget, retain, anchor="forget"):
+    def __init__(self, forget=None, retain=None, anchor="forget"):
         """Wraps the forget retain dataset into unlearning dataset.
 
         Args:

@@ -1,0 +1,51 @@
+# @package _global_
+# DLM (LLaDA/Dream) MUSE unlearning — scalability scenario. Forgets increasingly
+# large slices (forget_1..forget_4) of the MUSE corpus, each starting fresh from
+# the DLM target. Counterpart of experiment/unlearn/muse/scalability.yaml; pass
+# the diffusion target via model.model_args.pretrained_model_name_or_path.
+defaults:
+  - override /model: LLaDA-8B-Instruct
+  - override /trainer: DiffusionGradDiff
+  - override /data: unlearn
+  - override /data/datasets@data.forget: MUSE_forget_scal
+  - override /data/datasets@data.retain: MUSE_retain
+  - override /eval: muse_dlm
+
+data_split: News
+forget_split: forget_4
+retain_split: retain1
+retain_logs_path: null
+
+# Dream: set `override /model: Dream-v0-Instruct-7B` and pass right_shift_logits
+# + cart loss weighting + eval.muse_dlm.right_shift_logits on the CLI.
+
+data:
+  anchor: forget
+  forget:
+    MUSE_forget_scal:
+      args:
+        hf_args:
+          path: muse-bench/MUSE-${data_split}
+          split: ${forget_split}
+  retain:
+    MUSE_retain:
+      args:
+        hf_args:
+          path: muse-bench/MUSE-${data_split}
+          split: ${retain_split}
+
+eval:
+  muse_dlm:
+    data_split: ${data_split}
+    retain_logs_path: ${retain_logs_path}
+    overwrite: true
+
+trainer:
+  args:
+    warmup_epochs: 1.0
+    learning_rate: 1e-5
+    weight_decay: 0.01
+    num_train_epochs: 10
+    lr_scheduler_type: constant
+
+task_name: ???

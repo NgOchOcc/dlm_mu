@@ -1,0 +1,28 @@
+# @package eval.muse_dlm.metrics.retain_knowmem_ROUGE
+# DLM counterpart of muse_metrics/retain_knowmem_ROUGE: QA-generation ROUGE via
+# iterative denoising (rouge_diffusion) on the MUSE knowmem retain set (utility).
+defaults:
+  - ../../data/datasets@datasets: MUSE_retain_knowmem
+  - ../../collator@collators: DataCollatorForSupervisedDatasetwithIndex
+  - ../../generation@generation_args: dlm_default
+
+handler: rouge_diffusion
+rouge_type: rougeL_f1
+batch_size: ${eval.muse_dlm.batch_size}
+scheduler_name: ${eval.muse_dlm.scheduler_name}
+right_shift_logits: ${eval.muse_dlm.right_shift_logits}
+
+datasets:
+  MUSE_retain_knowmem:
+    args:
+      hf_args:
+        path: muse-bench/MUSE-${eval.muse_dlm.data_split}
+      few_shot_dataset_hf_args:
+        path: muse-bench/MUSE-${eval.muse_dlm.data_split}
+      predict_with_generate: True
+collators:
+  DataCollatorForSupervisedDataset:
+    args:
+      padding_side: right
+generation_args:
+  max_new_tokens: 32

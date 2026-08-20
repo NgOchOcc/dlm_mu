@@ -1,0 +1,11 @@
+# @package eval.rwku_dlm.metrics.triviaqa_em
+# RWKU utility: TriviaQA generation exact-match (substring; higher better).
+defaults:
+  - ../../data/datasets@datasets: RWKU_triviaqa
+  - ../../generation@generation_args: dlm_rwku
+
+handler: triviaqa_em_diffusion
+batch_size: ${eval.rwku_dlm.batch_size}
+scheduler_name: ${eval.rwku_dlm.scheduler_name}
+right_shift_logits: ${eval.rwku_dlm.right_shift_logits}
+max_samples: ${eval.rwku_dlm.utility_max_samples}

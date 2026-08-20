@@ -1,0 +1,9 @@
+# RWKU utility: TriviaQA generation EM (utility_factuality). Substring match
+# against any reference; higher is better. Rows carry `answers` (list).
+RWKU_triviaqa:
+  handler: RWKURawDataset
+  args:
+    hf_args:
+      path: "jinzhuoran/RWKU"
+      name: "utility_factuality"
+      split: "test"

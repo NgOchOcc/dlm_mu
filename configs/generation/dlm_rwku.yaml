@@ -1,0 +1,8 @@
+# RWKU masked-diffusion generation args (matches MDU eval_rwku_dream.py:
+# max_new_tokens=64, steps=64, greedy). Used for forget/neighbor RougeL-recall
+# probes and TriviaQA generation.
+max_new_tokens: 64
+steps: 64
+block_size: 64
+temperature: 0.0
+remasking: low_confidence

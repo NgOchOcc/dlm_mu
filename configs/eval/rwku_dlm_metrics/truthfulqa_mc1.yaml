@@ -1,0 +1,9 @@
+# @package eval.rwku_dlm.metrics.truthfulqa_mc1
+# RWKU utility: TruthfulQA MC1 (lowest-NLL choice; higher accuracy better).
+defaults:
+  - ../../data/datasets@datasets: RWKU_truthfulqa
+
+handler: truthfulqa_mc1_diffusion
+batch_size: ${eval.rwku_dlm.batch_size}
+right_shift_logits: ${eval.rwku_dlm.right_shift_logits}
+max_samples: ${eval.rwku_dlm.utility_max_samples}

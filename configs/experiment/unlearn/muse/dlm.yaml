@@ -1,0 +1,56 @@
+# @package _global_
+# Masked-diffusion (LLaDA/Dream) unlearning on MUSE. DLM counterpart of
+# experiment/unlearn/muse/default.yaml: swaps in a diffusion backbone, a
+# Diffusion* trainer, and the muse_dlm eval suite. The starting model is a DLM
+# finetuned on the MUSE corpus (see experiment/finetune/muse/dlm.yaml); MUSE
+# ships no diffusion target checkpoint, so pass it via
+# model.model_args.pretrained_model_name_or_path on the CLI.
+defaults:
+  - override /model: LLaDA-8B-Instruct
+  - override /trainer: DiffusionGradDiff
+  - override /data: unlearn
+  - override /data/datasets@data.forget: MUSE_forget
+  - override /data/datasets@data.retain: MUSE_retain
+  - override /eval: muse_dlm
+
+data_split: News
+forget_split: forget
+retain_split: retain1
+retain_logs_path: null
+
+# Dream needs right-shifted logits and the CART loss weighting; LLaDA does not.
+# For Dream, also set `override /model: Dream-v0-Instruct-7B` above and add:
+#   trainer.method_args.right_shift_logits: True
+#   trainer.method_args.loss_weight_type: "cart[geo_p:0.3]"
+#   eval.muse_dlm.right_shift_logits: True
+
+data:
+  anchor: forget
+  forget:
+    MUSE_forget:
+      args:
+        hf_args:
+          split: ${forget_split}
+          path: muse-bench/MUSE-${data_split}
+  retain:
+    MUSE_retain:
+      args:
+        hf_args:
+          path: muse-bench/MUSE-${data_split}
+          split: ${retain_split}
+
+eval:
+  muse_dlm:
+    data_split: ${data_split}
+    retain_logs_path: ${retain_logs_path}
+    overwrite: true
+
+trainer:
+  args:
+    warmup_epochs: 1.0
+    learning_rate: 1e-5
+    weight_decay: 0.01
+    num_train_epochs: 10
+    lr_scheduler_type: constant
+
+task_name: ???

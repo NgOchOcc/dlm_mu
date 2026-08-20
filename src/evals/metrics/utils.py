@@ -43,9 +43,30 @@ def get_forget_quality(model_tr, reference_tr):
 
 def run_batchwise_evals(model, dataloader, batch_eval_fn, batch_eval_fn_args, eval_msg):
     """Run batch-wise evaluations on a dataset using a specified evaluation function. Handles
-    multi-answer datasets by organizing evaluations by answer indices and aggregating results."""
+    multi-answer datasets by organizing evaluations by answer indices and aggregating results.
+
+    Under a multi-process launch (``accelerate launch``) the batches are sharded
+    round-robin across ranks and the per-index results are gathered and merged, so
+    every rank returns the full result dict. With a single process this is a no-op
+    and behaves exactly as before."""
+    from accelerate import PartialState
+    from accelerate.utils import gather_object
+
+    state = PartialState()
+    world_size = state.num_processes
+
     evals = defaultdict(dict)
-    for batch in tqdm(dataloader, desc=eval_msg, total=len(dataloader)):
+    for batch_idx, batch in enumerate(
+        tqdm(
+            dataloader,
+            desc=eval_msg,
+            total=len(dataloader),
+            disable=not state.is_main_process,
+        )
+    ):
+        # Round-robin shard: each rank only runs the model on its own batches.
+        if world_size > 1 and batch_idx % world_size != state.process_index:
+            continue
         # if data arrives in normal format we convert the batch to multiple answer-style
         # like in tofu_perturbed by adding a fake intra_item_index
         if "input_ids" in batch:
@@ -67,6 +88,14 @@ def run_batchwise_evals(model, dataloader, batch_eval_fn, batch_eval_fn_args, ev
                 evals[intra_item_idx].keys() & indexwise_batch_evals.keys()
             ), "Data indices repeated while iterating dataloader"
             evals[intra_item_idx] |= indexwise_batch_evals
+    # Gather each rank's disjoint shard and merge by index (indices are globally
+    # unique, so the union is exact and order-independent).
+    if world_size > 1:
+        merged = defaultdict(dict)
+        for part in gather_object([dict(evals)]):
+            for intra_item_idx, indexwise in part.items():
+                merged[intra_item_idx] |= indexwise
+        evals = merged
     # evals looks like {iidx0: {idx453: {prob: 0.1, loss: 1}},
     #                   iidx1: {idx453: {prob: 0.2, loss: 2}}}
     if len(evals) == 1:  # normal single answer dataset, no need for list

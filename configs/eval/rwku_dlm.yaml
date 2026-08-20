@@ -1,0 +1,38 @@
+# @package eval.rwku_dlm
+# NOTE: the line above is a package directive, not a comment.
+#
+# Masked-diffusion (Dream, LLaDA) evaluation for the RWKU knowledge-unlearning
+# benchmark (jinzhuoran/RWKU). Mirrors the MDU reference (eval_rwku_dream.py):
+#   forget_level1/2/3   RougeL recall on generations  (lower is better)
+#   neighbor_level1/2    RougeL recall                 (higher is better, retain)
+#   mmlu                 MMLU few-shot accuracy        (higher is better)
+#   truthfulqa_mc1       TruthfulQA MC1 (lowest NLL)   (higher is better)
+#   triviaqa_em          TriviaQA generation EM        (higher is better)
+#
+# Evaluated over the full RWKU test sets (all target/neighbor subjects). For
+# Dream set right_shift_logits=True on the CLI.
+defaults:
+  - rwku_dlm_metrics:
+    - forget_level1_ROUGE
+    - forget_level2_ROUGE
+    - forget_level3_ROUGE
+    - neighbor_level1_ROUGE
+    - neighbor_level2_ROUGE
+    - mmlu
+    - truthfulqa_mc1
+    - triviaqa_em
+
+handler: RWKUEvaluator
+output_dir: ${paths.output_dir}
+metrics: {}
+overwrite: false
+batch_size: 32
+
+# Diffusion-specific knobs consumed by the DLM metric handlers.
+scheduler_name: LinearAlphaScheduler
+right_shift_logits: False  # set True for Dream
+
+# Utility subsampling (the RWKU utility configs are large: MMLU 34k, TruthfulQA
+# 10k, TriviaQA 20k). Matches the MDU reference (MMLU capped at 100).
+mmlu_max_samples: 100
+utility_max_samples: 500

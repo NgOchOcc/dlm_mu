@@ -32,6 +32,12 @@ class Evaluator:
 
     def save_logs(self, logs, file):
         """Save the logs in a json file"""
+        from accelerate import PartialState
+
+        # Under a multi-process (accelerate) launch every rank holds the full
+        # merged results, but only the main process should write to disk.
+        if not PartialState().is_main_process:
+            return
         logs = dict(sorted(logs.items()))
         os.makedirs(os.path.dirname(file), exist_ok=True)
         try:

@@ -1,0 +1,44 @@
+# @package _global_
+# Masked-diffusion (LLaDA/Dream) full-finetune on the MUSE corpus — produces the
+# "target" (memorized) model that unlearning starts from. DLM counterpart of
+# experiment/finetune/muse/default.yaml: swaps in a diffusion backbone, the
+# DiffusionFinetune trainer, and the muse_dlm eval suite. Trains on MUSE_train
+# (the raw split corpus), since MUSE ships target checkpoints for Llama only.
+defaults:
+  - override /model: LLaDA-8B-Instruct
+  - override /trainer: DiffusionFinetune
+  - override /data/datasets@data.train: MUSE_train
+  - override /eval: muse_dlm
+  - override /data: finetune
+
+mode: finetune
+data_split: News
+data_sub_set: full   # full or retain
+
+# Dream needs right-shifted logits and CART loss weighting; LLaDA does not.
+# For Dream, also set `override /model: Dream-v0-Instruct-7B` above and add:
+#   trainer.method_args.right_shift_logits: True
+#   trainer.method_args.loss_weight_type: "cart[geo_p:0.3]"
+#   eval.muse_dlm.right_shift_logits: True
+
+data:
+  train:
+    MUSE_train:
+      args:
+        hf_args:
+          path: tamarsonha/MUSE-${data_split}-Train
+          split: ${data_sub_set}
+
+eval:
+  muse_dlm:
+    data_split: ${data_split}
+    overwrite: true
+
+trainer:
+  args:
+    learning_rate: 1e-5
+    weight_decay: 0.01
+    warmup_epochs: 1.0
+    num_train_epochs: 10
+
+task_name: ???

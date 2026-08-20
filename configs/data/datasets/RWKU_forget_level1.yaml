@@ -1,0 +1,14 @@
+# RWKU forget probe, level 1 (cloze / fill-in-the-blank). RougeL recall on
+# generations; lower is better after unlearning. Reuses QADataset with the
+# RWKU field names (query/answer).
+RWKU_forget_level1:
+  handler: QADataset
+  args:
+    hf_args:
+      path: "jinzhuoran/RWKU"
+      name: "forget_level1"
+      split: "test"
+    question_key: "query"
+    answer_key: "answer"
+    max_length: 512
+    predict_with_generate: True

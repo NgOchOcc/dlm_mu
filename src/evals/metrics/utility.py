@@ -16,6 +16,23 @@ def hm_aggregate(model, **kwargs):
     return {"agg_value": sc.stats.hmean(values)}
 
 
+@unlearning_metric(name="hm_complement_aggregate")
+def hm_complement_aggregate(model, **kwargs):
+    """Harmonic mean of the complements (1 - agg_value) of the pre-compute metrics.
+
+    Used for the Memorization Score = HM(1-ES, 1-EM, 1-Para. Prob., 1-Truth Ratio).
+    Each component agg_value lies in [0, 1]; a perfect score on any axis (complement
+    0) drives the harmonic mean to 0.
+    """
+    components = {
+        name: float(np.clip(1.0 - result["agg_value"], 0.0, 1.0))
+        for name, result in kwargs["pre_compute"].items()
+    }
+    values = list(components.values())
+    agg = 0.0 if min(values) <= 0.0 else float(sc.stats.hmean(values))
+    return {"agg_value": agg, "components": components}
+
+
 @unlearning_metric(name="classifier_prob")
 def classifier_prob(model, **kwargs):
     batch_size = kwargs.get("batch_size", 32)

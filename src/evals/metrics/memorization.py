@@ -1,6 +1,7 @@
 import logging
 import torch
 import numpy as np
+from scipy.special import expit
 from torch.utils.data import DataLoader
 
 from evals.metrics.utils import (
@@ -156,18 +157,24 @@ def truth_ratio(model, **kwargs):
     correct_avg_losses = aggregate_to_1D(np.array(correct_avg_losses))
     wrong_avg_losses = aggregate_to_1D(np.array(wrong_avg_losses))
 
-    correct_prob = np.exp(-correct_avg_losses)
-    wrong_prob = np.exp(-wrong_avg_losses)
+    # Both ratios are functions of the loss *difference* only, so take that route
+    # instead of exponentiating each loss separately. A collapsed unlearned model
+    # reaches avg_loss ~200 nats, where exp(-loss) underflows far below the 1e-10
+    # guard this used to carry in the denominator: the guard then stood in for
+    # correct_prob entirely and the ratio came out ~1e-80 instead of O(1). The
+    # difference form is exact at any loss scale. The clip only bounds exp() to
+    # the float64 range; |diff| that large already means score 0 either way.
+    log_ratio = correct_avg_losses - wrong_avg_losses  # = log(wrong / correct)
 
     if kwargs["aggregator"] != "prob_mean":
         # Original definition from TOFU: wrong / correct
-        truth_ratios = wrong_prob / (correct_prob + 1e-10)
+        truth_ratios = np.exp(np.clip(log_ratio, -700, 700))
     else:
         # New definition from OpenUnlearning: correct / (correct + wrong)
-        truth_ratios = correct_prob / (correct_prob + wrong_prob + 1e-10)
+        truth_ratios = expit(-log_ratio)
 
     value_by_index = dict(
-        zip(correct_indices, [{"score": val} for val in truth_ratios])
+        zip(filtered_indices, [{"score": val} for val in truth_ratios])
     )
     truth_ratio_stats = np.array([evals["score"] for evals in value_by_index.values()])
     forget_tr_avg = aggregator(truth_ratio_stats)

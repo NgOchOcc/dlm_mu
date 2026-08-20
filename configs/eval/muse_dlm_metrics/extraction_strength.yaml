@@ -1,0 +1,17 @@
+# @package eval.muse_dlm.metrics.extraction_strength
+# DLM counterpart of muse_metrics/extraction_strength: greedy one-shot
+# reconstruction extraction strength (extraction_strength_diffusion) on the
+# MUSE verbmem forget set.
+defaults:
+  - ../../data/datasets@datasets: MUSE_forget_verbmem
+  - ../../collator@collators: DataCollatorForSupervisedDatasetwithIndex
+
+handler: extraction_strength_diffusion
+batch_size: ${eval.muse_dlm.batch_size}
+right_shift_logits: ${eval.muse_dlm.right_shift_logits}
+
+datasets:
+  MUSE_forget_verbmem:
+    args:
+      hf_args:
+        path: muse-bench/MUSE-${eval.muse_dlm.data_split}

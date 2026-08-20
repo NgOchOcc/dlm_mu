@@ -1,0 +1,51 @@
+# @package _global_
+# DLM (LLaDA/Dream) MUSE unlearning — sustainability scenario. Sequential
+# (continual) unlearning: each forget request (forget_1..forget_4) starts from
+# the output of the previous one, not from the target. Counterpart of
+# experiment/unlearn/muse/sustainabilty.yaml; the script chains the model path.
+defaults:
+  - override /model: LLaDA-8B-Instruct
+  - override /trainer: DiffusionGradDiff
+  - override /data: unlearn
+  - override /data/datasets@data.forget: MUSE_forget_sust
+  - override /data/datasets@data.retain: MUSE_retain
+  - override /eval: muse_dlm
+
+data_split: News
+forget_split: forget_4
+retain_split: retain1
+retain_logs_path: null
+
+# Dream: set `override /model: Dream-v0-Instruct-7B` and pass right_shift_logits
+# + cart loss weighting + eval.muse_dlm.right_shift_logits on the CLI.
+
+data:
+  anchor: forget
+  forget:
+    MUSE_forget_sust:
+      args:
+        hf_args:
+          path: muse-bench/MUSE-${data_split}
+          split: ${forget_split}
+  retain:
+    MUSE_retain:
+      args:
+        hf_args:
+          path: muse-bench/MUSE-${data_split}
+          split: ${retain_split}
+
+eval:
+  muse_dlm:
+    data_split: ${data_split}
+    retain_logs_path: ${retain_logs_path}
+    overwrite: true
+
+trainer:
+  args:
+    warmup_epochs: 1.0
+    learning_rate: 1e-5
+    weight_decay: 0.01
+    num_train_epochs: 10
+    lr_scheduler_type: constant
+
+task_name: ???

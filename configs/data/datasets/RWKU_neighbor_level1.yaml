@@ -1,0 +1,13 @@
+# RWKU neighbor probe, level 1 (cloze). Knowledge about entities neighboring the
+# forget targets that should be RETAINED: RougeL recall, higher is better.
+RWKU_neighbor_level1:
+  handler: QADataset
+  args:
+    hf_args:
+      path: "jinzhuoran/RWKU"
+      name: "neighbor_level1"
+      split: "test"
+    question_key: "query"
+    answer_key: "answer"
+    max_length: 512
+    predict_with_generate: True

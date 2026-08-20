@@ -1,0 +1,7 @@
+# RWKU MMLU generation args: only the answer letter is needed, so generate a
+# handful of tokens (MDU eval_rwku_dream.py uses max_new_tokens=5, steps=64).
+max_new_tokens: 5
+steps: 64
+block_size: 5
+temperature: 0.0
+remasking: low_confidence

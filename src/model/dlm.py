@@ -76,4 +76,5 @@ def get_dlm_model(model_cfg: DictConfig):
         raise ValueError(
             f"Error {e} while loading diffusion model via dllm.utils.get_model()."
         )
+
     return model, tokenizer

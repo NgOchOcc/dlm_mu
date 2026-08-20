@@ -1,0 +1,23 @@
+defaults:
+  - DiffusionGradDiff
+
+handler: DiffusionTrajRMDU
+method_args:
+  # Residual strength: 0 makes the target exactly the frozen prompt-masked
+  # prediction (= MDU at tau 1); larger beta pushes the student below it on the
+  # tokens the prompt promoted. The proposal sweeps {0 0.25 0.5 1 2 4}.
+  beta: 1.0
+  # Only read when target_mode is mdu: tau multiplies the target logits.
+  tau: 1.0
+  # trajectory: states from the teacher-forced decoder trajectory (Alg 1).
+  # forward: Bernoulli forward masking, i.e. the MDU state distribution.
+  mask_source: trajectory
+  # residual: Eq 2-4. mdu: logsoftmax(tau * logits_u0).
+  target_mode: residual
+  # 0 reveals one position per step, matching the eval decoder (steps > tokens).
+  # A positive value subsamples the trajectory to that many states.
+  trajectory_steps: 0
+  cache_trajectories: true
+  alpha: 1.0
+  gamma: 1.0
+  retain_loss_type: NLL

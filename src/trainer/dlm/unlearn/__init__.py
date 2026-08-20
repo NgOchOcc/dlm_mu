@@ -4,9 +4,13 @@ from trainer.dlm.unlearn.grad_diff import DiffusionGradDiff
 from trainer.dlm.unlearn.npo import DiffusionNPO
 from trainer.dlm.unlearn.simnpo import DiffusionSimNPO
 from trainer.dlm.unlearn.wga import DiffusionWGA
-from trainer.dlm.unlearn.null_anchor import DiffusionNullAnchor
-from trainer.dlm.unlearn.amtu import DiffusionAMTU
-from trainer.dlm.unlearn.fcp import DiffusionFCP
+from trainer.dlm.unlearn.mdu import DiffusionMDU
+from trainer.dlm.unlearn.traj_rmdu import DiffusionTrajRMDU
+from trainer.dlm.unlearn.traj_iproj import DiffusionTrajIProj
+from trainer.dlm.unlearn.gap import DiffusionGAP
+from trainer.dlm.unlearn.aura import DiffusionAURA
+from trainer.dlm.unlearn.tsd import DiffusionTSD
+from trainer.dlm.unlearn.simple_tsd import DiffusionSimpleTSD
 
 __all__ = [
     "DiffusionUnlearnTrainer",
@@ -15,7 +19,11 @@ __all__ = [
     "DiffusionNPO",
     "DiffusionSimNPO",
     "DiffusionWGA",
-    "DiffusionNullAnchor",
-    "DiffusionAMTU",
-    "DiffusionFCP",
+    "DiffusionMDU",
+    "DiffusionTrajRMDU",
+    "DiffusionTrajIProj",
+    "DiffusionGAP",
+    "DiffusionAURA",
+    "DiffusionTSD",
+    "DiffusionSimpleTSD",
 ]

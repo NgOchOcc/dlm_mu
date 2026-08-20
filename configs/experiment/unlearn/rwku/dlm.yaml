@@ -1,0 +1,39 @@
+# @package _global_
+# Masked-diffusion (LLaDA/Dream) unlearning on RWKU (jinzhuoran/RWKU).
+# RWKU is a *forget-only* benchmark — it ships no entity-level retain training
+# set — so this defaults to DiffusionGradAscent with no retain (matches the MDU
+# forget-only, alpha=0 setting). Whole-corpus unlearning: the forget target is
+# the original passage corpus for all target entities (train_original_passage).
+#
+# Retain-based trainers (GradDiff/NPO/SimNPO/WGA) additionally need a retain
+# corpus; supply one via `+data/datasets@data.retain=<cfg>` on the CLI if used.
+defaults:
+  - override /model: LLaDA-8B-Instruct
+  - override /trainer: DiffusionGradAscent
+  - override /data: unlearn
+  - override /data/datasets@data.forget: RWKU_forget_train
+  - override /data/datasets@data.retain: null
+  - override /eval: rwku_dlm
+
+# Dream: also set `override /model: Dream-v0-Instruct-7B` above and pass on CLI:
+#   trainer.method_args.right_shift_logits: True
+#   trainer.method_args.loss_weight_type: "cart[geo_p:0.3]"
+#   eval.rwku_dlm.right_shift_logits: True
+
+data:
+  anchor: forget
+  forget:
+    RWKU_forget_train: {}
+
+eval:
+  rwku_dlm:
+    overwrite: true
+
+trainer:
+  args:
+    warmup_epochs: 1.0
+    learning_rate: 1e-5
+    weight_decay: 0.01
+    num_train_epochs: 5
+
+task_name: ???

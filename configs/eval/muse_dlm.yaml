@@ -1,0 +1,28 @@
+# @package eval.muse_dlm
+# NOTE: the above line is not a comment, but sets the package for config. See
+# https://hydra.cc/docs/upgrades/0.11_to_1.0/adding_a_package_directive/
+#
+# Masked-diffusion (Dream, LLaDA) counterpart of eval/muse.yaml. Reuses the MUSE
+# evaluator and datasets, but the model-dependent metrics use the DLM handlers
+# (rouge_diffusion / extraction_strength_diffusion). privleak is omitted: it
+# relies on the min-k MIA, which has no diffusion handler.
+defaults:
+  - muse_dlm_metrics:
+    - forget_knowmem_ROUGE
+    - retain_knowmem_ROUGE
+    - forget_verbmem_ROUGE
+    - extraction_strength
+
+handler: MUSEEvaluator
+output_dir: ${paths.output_dir} # set to default eval directory
+metrics: {}
+overwrite: false
+data_split: News
+retain_logs_path: null
+batch_size: 8
+
+# Diffusion-specific knobs consumed by the DLM metric handlers.
+scheduler_name: LinearAlphaScheduler
+mc_num: 128
+time_epsilon: 1e-3
+right_shift_logits: False  # set True for Dream
