@@ -33,12 +33,12 @@ SUFFIX="${TASK_SUFFIX:-_sbrutsd_run1}"
 SIGMA="${SIGMA:-median}"
 SIGMA_FALLBACK="${SIGMA_FALLBACK:-0.05}"
 SIGMA_ANC="${SIGMA_ANC:-1.0}"
-GAMMA_ANC="${GAMMA_ANC:-1.0}"
+GAMMA_ANC="${GAMMA_ANC:-0.0}"
 ALPHA="${ALPHA:-0.5}"
 CENTRE_MODE="${CENTRE_MODE:-gold}"
 
 mkdir -p logs
-LOG="logs/sbrutsd${SUFFIX}.log"
+LOG="logs/sbrutsd${SUFFIX}_no_distil.log"
 
 echo "[run_sbrutsd] model=${MODEL} gpus=${GPUS} split=${SPLIT} suffix=${SUFFIX}" >&2
 echo "[run_sbrutsd] sigma=${SIGMA} sigma_fallback=${SIGMA_FALLBACK} sigma_anc=${SIGMA_ANC} gamma_anc=${GAMMA_ANC} alpha=${ALPHA} centre=${CENTRE_MODE}" >&2

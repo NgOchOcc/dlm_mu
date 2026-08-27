@@ -16,6 +16,7 @@ method_args:
   alpha: 0.5
   # --- SBRU repulsion hyperparameters (see configs/trainer/DiffusionSBRU.yaml) ---
   sigma: 0.05                # repulsion ball radius (embedding-space; 0.05-0.1 works)
+  sigma_fallback: 0.05       # fixed fallback when the median bandwidth heuristic degenerates
   sigma_anc: 1.0             # anchor ball radius, WIDER than sigma so L_anc still holds e_hat
   gamma_anc: 1.0             # promptless-anchor attraction weight
   centre_mode: gold          # gold = E[y_f] | ref_soft = frozen-teacher soft embedding
