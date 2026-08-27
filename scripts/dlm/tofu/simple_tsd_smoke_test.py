@@ -88,6 +88,84 @@ def _gold_at(self, pos, bi):
     return _CLEAN[bi, pos]
 
 
+def _make_cover_stub(loss_mc, retain_frac, select_temp, rho):
+    """Instance carrying only what ``_sample_masks_cover`` reads. ``scheduler`` returns a
+    constant so ``rho = 1 - scheduler(t)`` is fixed, making per-draw counts deterministic."""
+    t = object.__new__(DiffusionSimpleTSD)
+    t.loss_mc = loss_mc
+    t.retain_frac = retain_frac
+    t.select_temp = select_temp
+    t.time_epsilon = 1e-3
+    t.scheduler = lambda tt: torch.full_like(tt, 1.0 - rho)
+    return t
+
+
+def test_cover_masking():
+    """Cover-mode masking: fixed rho/q composition, score-weighted forget selection,
+    >=1 forget per draw, uniform fallback, and answer-only masking."""
+    torch.manual_seed(0)
+    L = 10
+    answer_mask = torch.ones(1, L, dtype=torch.bool)
+    a_hat = torch.zeros(1, L, dtype=torch.bool)
+    a_hat[0, :6] = True  # positions 0..5 forget, 6..9 retain
+    scores = torch.zeros(1, L)
+    scores[0, :6] = torch.arange(6, dtype=torch.float32)  # pos5 highest prompt-dependence
+
+    # rho=0.5 -> n_mask=round(0.5*10)=5; q=0.4 -> kf=round(0.6*5)=3 forget, kr=2 retain.
+    stub = _make_cover_stub(loss_mc=4000, retain_frac=0.4, select_temp=1.0, rho=0.5)
+    masks = DiffusionSimpleTSD._sample_masks_cover(stub, answer_mask, a_hat, scores)
+    assert masks.shape == (4000, 1, L), masks.shape
+    f_counts = masks[:, 0, :6].sum(-1)
+    r_counts = masks[:, 0, 6:].sum(-1)
+    assert (f_counts == 3).all(), f_counts.unique()
+    assert (r_counts == 2).all(), r_counts.unique()
+    # never mask outside the answer span (structural: only f_idx/r_idx are set).
+    assert not bool((masks[:, 0] & ~answer_mask[0]).any())
+    print("[ok] cover: n_mask=round(rho|A|), split kf/kr = (1-q)/q of n_mask")
+
+    # Score weighting: mask frequency rises with the PCSS score across forget positions.
+    freq = masks[:, 0, :6].float().mean(0)
+    assert int(freq.argmax()) == 5 and int(freq.argmin()) == 0, freq
+    assert bool((freq[1:] >= freq[:-1] - 0.03).all()), freq  # weakly monotone in score
+    assert float(freq[5] - freq[0]) > 0.3, freq  # clear preference for high score
+    print("[ok] cover: forget positions masked weighted by PCSS score (high -> more often)")
+
+    # No scores (manual span) -> uniform: every forget position ~ kf/n_f = 3/6 = 0.5.
+    stub_u = _make_cover_stub(loss_mc=4000, retain_frac=0.4, select_temp=1.0, rho=0.5)
+    masks_u = DiffusionSimpleTSD._sample_masks_cover(stub_u, answer_mask, a_hat, None)
+    freq_u = masks_u[:, 0, :6].float().mean(0)
+    assert float((freq_u - 0.5).abs().max()) < 0.05, freq_u
+    print("[ok] cover: no scores -> uniform forget selection")
+
+    # rho=0 -> n_mask=0 but >=1 forget still masked; nothing from retain.
+    stub_0 = _make_cover_stub(loss_mc=64, retain_frac=0.5, select_temp=1.0, rho=0.0)
+    masks_0 = DiffusionSimpleTSD._sample_masks_cover(stub_0, answer_mask, a_hat, scores)
+    assert (masks_0[:, 0, :6].sum(-1) == 1).all(), masks_0[:, 0, :6].sum(-1).unique()
+    assert (masks_0[:, 0, 6:].sum(-1) == 0).all(), masks_0[:, 0, 6:].sum(-1).unique()
+    print("[ok] cover: rho=0 forces exactly one forget token, no retain")
+
+    # rho=1 -> whole answer masked every draw (counts clamp to availability).
+    stub_1 = _make_cover_stub(loss_mc=16, retain_frac=0.4, select_temp=1.0, rho=1.0)
+    masks_1 = DiffusionSimpleTSD._sample_masks_cover(stub_1, answer_mask, a_hat, scores)
+    assert bool(masks_1[:, 0].all()), masks_1[:, 0].sum(-1).unique()
+    print("[ok] cover: rho=1 masks the whole answer")
+
+    # No forget positions (empty A_hat) -> the whole answer is "retain", masked at
+    # rho|A|=5 per draw with no forget floor; must not crash on the empty forget stratum.
+    empty_a = torch.zeros(1, L, dtype=torch.bool)
+    stub_e = _make_cover_stub(loss_mc=16, retain_frac=0.4, select_temp=1.0, rho=0.5)
+    masks_e = DiffusionSimpleTSD._sample_masks_cover(stub_e, answer_mask, empty_a, None)
+    assert bool((masks_e[:, 0].sum(-1) == 5).all()), masks_e[:, 0].sum(-1).unique()
+    print("[ok] cover: empty A_hat masks only retain, no forget floor")
+
+    # select_temp -> 0 approaches deterministic top-kf by score (top-3 = pos 3,4,5).
+    stub_t = _make_cover_stub(loss_mc=200, retain_frac=0.4, select_temp=0.01, rho=0.5)
+    masks_t = DiffusionSimpleTSD._sample_masks_cover(stub_t, answer_mask, a_hat, scores)
+    top3 = masks_t[:, 0, 3:6].float().mean(0)
+    assert bool((top3 > 0.98).all()), top3  # highest-score 3 forget positions nearly always
+    print("[ok] cover: small select_temp -> near-deterministic top-score forget masking")
+
+
 def main():
     global _CLEAN
     torch.manual_seed(0)
@@ -163,17 +241,17 @@ def main():
     assert ovl2[0].tolist() == [False, False, True, True, True], ovl2
     print("[ok] copied word glued to special tokens is dropped; fact word kept")
 
-    # --- Belief vs minimal demotion of the edited teacher target q. belief zeroes the
-    # top-K HIGHEST-PROBABILITY teacher tokens only (gold is NOT force-added). Teacher
+    # --- Belief vs minimal demotion of the edited teacher target q. belief demotes the
+    # gold token AND the top-K HIGHEST-PROBABILITY teacher tokens (matching TSD). Teacher
     # mass: id0=0.5, id1=0.2, ...; top-2 = {0, 1}. gold=0 (the argmax, as at a real fact
-    # position) so belief removes it plus the next alternative; minimal removes only gold.
+    # position) so belief removes gold plus the next alternative; minimal removes only gold.
     log_p0 = torch.log(torch.tensor([[[0.5, 0.2, 0.15, 0.1, 0.03, 0.02]]]))  # (1,1,6)
     tb = make_tsd(demotion="belief", belief_top_k=2)
     demote_b = tb._demote_mask(log_p0, torch.tensor([[0]]))
     assert demote_b[0, 0].tolist() == [True, True, False, False, False, False], demote_b
-    # gold OUTSIDE the top-K is not demoted by belief (top-K is purely prob-ranked).
+    # gold OUTSIDE the top-K is force-added on top of the top-K: {0,1} U {3}.
     demote_b2 = tb._demote_mask(log_p0, torch.tensor([[3]]))
-    assert demote_b2[0, 0].tolist() == [True, True, False, False, False, False], demote_b2
+    assert demote_b2[0, 0].tolist() == [True, True, False, True, False, False], demote_b2
     tm = make_tsd(demotion="minimal")
     demote_m = tm._demote_mask(log_p0, torch.tensor([[3]]))
     assert demote_m[0, 0].tolist() == [False, False, False, True, False, False], demote_m
@@ -183,7 +261,9 @@ def main():
     q = log_q.exp()
     assert torch.allclose(q.sum(-1), torch.ones(1, 1), atol=1e-6), q.sum(-1)
     assert float(q[0, 0][demote_b[0, 0]].sum()) < 1e-6, q
-    print("[ok] belief zeroes top-K highest-prob teacher tokens; q renormalises to 1")
+    print("[ok] belief demotes gold + top-K highest-prob teacher tokens; q renormalises to 1")
+
+    test_cover_masking()
 
     print("\nAll SimpleTSD PCSS-selection sanity checks passed.")
 

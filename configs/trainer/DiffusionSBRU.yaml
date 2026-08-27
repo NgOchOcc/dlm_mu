@@ -1,0 +1,13 @@
+defaults:
+  - DiffusionGradDiff        # forget+retain plumbing (gamma, retain NLL via optional_retain_loss)
+
+handler: DiffusionSBRU
+method_args:
+  sigma: 0.05                # repulsion ball radius; sweep found 0.05-0.1 works (1.0 saturates)
+  sigma_anc: 0.5             # anchor ball radius, WIDER than sigma so L_anc still holds e_hat
+                             #   after repulsion pushes it off the forget centre (retain-free guard)
+  gamma: 1.0                 # overall scale on the forget side (L_rep + gamma_anc * L_anc)
+  gamma_anc: 1.0             # promptless-anchor attraction weight (the ONLY utility guard when retain-free)
+  lam_ret: 0.0               # retain-NLL weight; 0 = retain-FREE (default). Utility rests on L_anc.
+  centre_mode: gold          # gold = E[y_f] | ref_soft = reference soft embedding
+  ball_k: 0                  # >0 = semantic ball: mean of k cosine-NN of the gold token

@@ -150,8 +150,11 @@ method_setup() {
         DiffusionAURA)      EXP=unlearn/tofu/dlm_aura ;;
         DiffusionTSD)       EXP=unlearn/tofu/dlm_tsd ;;
         DiffusionSimpleTSD) EXP=unlearn/tofu/dlm_simple_tsd ;;
-        DiffusionTrajRMDU)  EXP=unlearn/tofu/dlm_traj_rmdu ;;
-        DiffusionTrajIProj) EXP=unlearn/tofu/dlm_traj_iproj ;;
+        DiffusionSimpleTSDQMask) EXP=unlearn/tofu/dlm_simple_tsd ;;
+        DiffusionUTSD)      EXP=unlearn/tofu/dlm_simple_tsd ;;
+        DiffusionCSD)       EXP=unlearn/tofu/dlm_simple_tsd ;;
+        DiffusionSBRU)      EXP=unlearn/tofu/dlm_sbru ;;
+        DiffusionSBRUTSD)   EXP=unlearn/tofu/dlm_simple_tsd ;;
         *)                  EXP=unlearn/tofu/dlm ;;
     esac
     [[ -n "$EXP_OVERRIDE" ]] && EXP="$EXP_OVERRIDE"

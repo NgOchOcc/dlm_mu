@@ -26,12 +26,15 @@ from trainer.dlm.unlearn import (
     DiffusionSimNPO,
     DiffusionWGA,
     DiffusionMDU,
-    DiffusionTrajRMDU,
-    DiffusionTrajIProj,
     DiffusionGAP,
     DiffusionAURA,
     DiffusionTSD,
     DiffusionSimpleTSD,
+    DiffusionSimpleTSDQMask,
+    DiffusionUTSD,
+    DiffusionCSD,
+    DiffusionSBRU,
+    DiffusionSBRUTSD,
 )
 
 
@@ -132,9 +135,12 @@ _register_trainer(DiffusionNPO)
 _register_trainer(DiffusionSimNPO)
 _register_trainer(DiffusionWGA)
 _register_trainer(DiffusionMDU)
-_register_trainer(DiffusionTrajRMDU)
-_register_trainer(DiffusionTrajIProj)
 _register_trainer(DiffusionGAP)
 _register_trainer(DiffusionAURA)
 _register_trainer(DiffusionTSD)
 _register_trainer(DiffusionSimpleTSD)
+_register_trainer(DiffusionSimpleTSDQMask)
+_register_trainer(DiffusionUTSD)
+_register_trainer(DiffusionCSD)
+_register_trainer(DiffusionSBRU)
+_register_trainer(DiffusionSBRUTSD)

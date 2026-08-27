@@ -5,12 +5,15 @@ from trainer.dlm.unlearn.npo import DiffusionNPO
 from trainer.dlm.unlearn.simnpo import DiffusionSimNPO
 from trainer.dlm.unlearn.wga import DiffusionWGA
 from trainer.dlm.unlearn.mdu import DiffusionMDU
-from trainer.dlm.unlearn.traj_rmdu import DiffusionTrajRMDU
-from trainer.dlm.unlearn.traj_iproj import DiffusionTrajIProj
 from trainer.dlm.unlearn.gap import DiffusionGAP
 from trainer.dlm.unlearn.aura import DiffusionAURA
 from trainer.dlm.unlearn.tsd import DiffusionTSD
 from trainer.dlm.unlearn.simple_tsd import DiffusionSimpleTSD
+from trainer.dlm.unlearn.simple_tsd_qmask import DiffusionSimpleTSDQMask
+from trainer.dlm.unlearn.uniform_tsd import DiffusionUTSD
+from trainer.dlm.unlearn.concept_subspace import DiffusionCSD
+from trainer.dlm.unlearn.sbru import DiffusionSBRU
+from trainer.dlm.unlearn.sbru_tsd import DiffusionSBRUTSD
 
 __all__ = [
     "DiffusionUnlearnTrainer",
@@ -20,10 +23,13 @@ __all__ = [
     "DiffusionSimNPO",
     "DiffusionWGA",
     "DiffusionMDU",
-    "DiffusionTrajRMDU",
-    "DiffusionTrajIProj",
     "DiffusionGAP",
     "DiffusionAURA",
     "DiffusionTSD",
     "DiffusionSimpleTSD",
+    "DiffusionSimpleTSDQMask",
+    "DiffusionUTSD",
+    "DiffusionCSD",
+    "DiffusionSBRU",
+    "DiffusionSBRUTSD",
 ]

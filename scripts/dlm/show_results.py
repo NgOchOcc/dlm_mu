@@ -52,6 +52,7 @@ GROUPS = [
         ("forget_Q_A_ROUGE", "f_R"),
         ("forget_truth_ratio", "f_TR"),
         ("erasing_quality", "EQ"),
+        ("forget_Q_A_gibberish", "f_Flu"),
     ]),
     ("Retention Quality", [
         ("retain_Q_A_ROUGE", "ret_R"),
@@ -100,6 +101,17 @@ def _is_inherent_forget_only(base_method):
     return base_method in INHERENT_FORGET_ONLY or any(
         base_method.startswith(f"{m}_") for m in INHERENT_FORGET_ONLY
     )
+
+
+# `simple` mode: only the headline TSD run and the standard baselines. Every TSD /
+# SimpleTSD sweep variant (base_method carrying a "<method>_..." arm tag, e.g.
+# TSD_pathwise_minimal, SimpleTSD, SimpleTSD_alpha0.5) is dropped; bare "TSD" stays.
+SIMPLE_METHODS = set(METHOD_ORDER) | {"TSD"}
+
+
+def _is_simple_method(base_method):
+    """True for a clean baseline or the bare TSD run; False for any sweep variant."""
+    return base_method in SIMPLE_METHODS
 
 # Optional trailing "_<N>epochs" task-name tag (written by unlearn.sh with
 # EPOCH_IN_NAME=1) recording how long a run trained, so epoch sweeps of one method
@@ -223,6 +235,13 @@ def collect_rows(model, forget_split, mode="both"):
             continue
         if mode == "forget_only" and not (is_forget_only or _is_inherent_forget_only(base_method)):
             continue
+        # `simple`: only clean baselines + bare TSD, and for the baselines only their
+        # forget-only arm (TSD is inherently forget-only, so it always qualifies).
+        if mode == "simple" and not (
+            _is_simple_method(base_method)
+            and (is_forget_only or _is_inherent_forget_only(base_method))
+        ):
+            continue
         data = load_summary(md)
         if data is not None:
             methods.append((method, data))
@@ -250,7 +269,7 @@ def discover_models_muse():
     return sorted(models)
 
 
-def collect_rows_muse(model, split):
+def collect_rows_muse(model, split, mode="both"):
     rows = []
     base = load_summary_muse(EVAL_DIR / f"muse_{model}_{split}_full")
     if base is not None:
@@ -261,6 +280,9 @@ def collect_rows_muse(model, split):
         method = md.name.split("Diffusion")[-1]
         if method.endswith(MUSE_FORGET_ONLY_SUFFIX):
             method = method[: -len(MUSE_FORGET_ONLY_SUFFIX)]
+        _, base_method = _split_forget_only(_strip_epochs(method))
+        if mode == "simple" and not _is_simple_method(base_method):
+            continue
         data = load_summary_muse(md)
         if data is not None:
             methods.append((method, data))
@@ -371,11 +393,13 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument(
         "--mode",
-        choices=["both", "forget_only"],
+        choices=["both", "forget_only", "simple"],
         default="both",
         help="'both' shows every method variant; 'forget_only' shows the "
         "_forgetonly runs plus retain-free-by-design methods like TSD (all other "
-        "no-suffix runs dropped, GradAscent included). Reference rows always show.",
+        "no-suffix runs dropped, GradAscent included); 'simple' shows only the "
+        "headline TSD run and the standard baselines, dropping all TSD/SimpleTSD "
+        "sweep variants. Reference rows always show.",
     )
     args = ap.parse_args()
     for forget_split in FORGET_SPLITS:
@@ -399,7 +423,7 @@ def main():
         model_rows = {}
         present = []
         for model in muse_models:
-            block = dict(collect_rows_muse(model, split))
+            block = dict(collect_rows_muse(model, split, mode=args.mode))
             if not block:
                 continue
             present.append(model)
