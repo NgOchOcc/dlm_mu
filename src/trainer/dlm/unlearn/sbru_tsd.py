@@ -14,12 +14,22 @@ Combines two mechanisms we already have:
   anchor.
 
 Per selected forget position (``F = M ∩ A_hat``) the objective is the bounded
-    kl_f = k_sigma(e_hat, c)  -  gamma_anc * k_sigma_anc(e_hat, a)          in [-gamma_anc, 1]
-with ``k_sigma(u, v) = exp(-||u - v||^2 / 2 sigma^2) in (0, 1]``, forget centre ``c``
-(the gold embedding ``E[y_f]`` by default, or the frozen teacher's soft embedding under
-``centre_mode="ref_soft"``) and promptless anchor ``a = E^T p_theta0(.|m, y_t)``. The
-repulsion gradient ``-(1/sigma^2) k_sigma (e_hat - c)`` vanishes once ``||e_hat - c|| >>
-sigma`` -- a built-in stopping point, so the loss is bounded and cannot collapse.
+    kl_f = k_rep(e_hat, c)  -  gamma_anc * k_sigma_anc(e_hat, a)          in [-gamma_anc, 1]
+with an RBF kernel, forget centre ``c`` (the gold embedding ``E[y_f]`` by default, or the
+frozen teacher's soft embedding under ``centre_mode="ref_soft"``) and promptless anchor
+``a = E^T p_theta0(.|m, y_t)``. The repulsion gradient vanishes once ``e_hat`` is far from
+``c`` relative to the bandwidth -- a built-in stopping point, so the loss is bounded and
+cannot collapse.
+
+The repulsion bandwidth follows the SVGD **median heuristic** (Liu & Wang, 2016): the
+kernel is ``k(x, x') = exp(-||x - x'||^2 / h)`` with ``h = med^2 / log(n)``, where ``med``
+is the median pairwise distance between the current forget-position soft embeddings
+``{e_hat_i}_{i=1}^n`` in the batch, recomputed each step (``n`` = number of selected forget
+positions). This adaptively matches the bandwidth to the embedding scale, so
+``sum_j k(x_i, x_j) ≈ n exp(-med^2 / h) = 1``. Passing a positive float for ``sigma``
+instead uses a fixed ``k_sigma(u, v) = exp(-||u - v||^2 / 2 sigma^2)``; the anchor term
+always uses the fixed ``sigma_anc``. When the batch has fewer than two forget positions (or
+all coincide) the heuristic degenerates and falls back to ``sigma_fallback``.
 
 The base then composes it exactly as SimpleTSD does:
     L_ex = alpha * mean_F kl_f  +  (1 - alpha) * mean_R KL(p0(.|x,y_M) || p_theta)
@@ -34,6 +44,8 @@ LLaDA), here the SimpleTSD self-distillation on ``R`` supplies retain-free utili
 directly, which is the intended fix for that collapse.
 """
 
+import math
+
 import torch
 
 from trainer.dlm.unlearn.simple_tsd import DiffusionSimpleTSD
@@ -42,8 +54,9 @@ from trainer.dlm.unlearn.simple_tsd import DiffusionSimpleTSD
 class DiffusionSBRUTSD(DiffusionSimpleTSD):
     def __init__(
         self,
-        sigma=0.05,
-        sigma_anc=None,
+        sigma="median",
+        sigma_anc=1.0,
+        sigma_fallback=0.05,
         gamma_anc=1.0,
         centre_mode="gold",
         ball_k=0,
@@ -51,8 +64,11 @@ class DiffusionSBRUTSD(DiffusionSimpleTSD):
         **kwargs,
     ):
         # Validate the cheap scalars before super().__init__ builds the frozen ref model.
-        if not (float(sigma) > 0.0):
-            raise ValueError(f"sigma must be > 0, got {sigma}")
+        median = isinstance(sigma, str) and sigma.lower() == "median"
+        if not median and not (float(sigma) > 0.0):
+            raise ValueError(f"sigma must be > 0 or 'median', got {sigma!r}")
+        if not (float(sigma_fallback) > 0.0):
+            raise ValueError(f"sigma_fallback must be > 0, got {sigma_fallback}")
         if sigma_anc is not None and not (float(sigma_anc) > 0.0):
             raise ValueError(f"sigma_anc must be > 0, got {sigma_anc}")
         if centre_mode not in ("gold", "ref_soft"):
@@ -60,10 +76,19 @@ class DiffusionSBRUTSD(DiffusionSimpleTSD):
         if int(ball_k) < 0:
             raise ValueError(f"ball_k must be >= 0, got {ball_k}")
         super().__init__(*args, **kwargs)  # builds + freezes self.ref_model, sets mask/pad/vocab
-        self.sigma = float(sigma)
+        # Repulsion bandwidth: the SVGD median heuristic (h = med^2 / log n, recomputed each
+        # step) when sigma == "median"; a fixed sigma otherwise. sigma_fallback is the fixed
+        # sigma used only when the heuristic degenerates (< 2 forget positions, or all equal).
+        self.median_bandwidth = median
+        self.sigma = None if median else float(sigma)
+        self.sigma_fallback = float(sigma_fallback)
         # Anchor bandwidth: wider than the repulsion sigma so the attraction basin still
-        # reaches e_hat after repulsion pushes it off the forget centre. Defaults to sigma.
-        self.sigma_anc = float(sigma_anc) if sigma_anc is not None else float(sigma)
+        # reaches e_hat after repulsion pushes it off the forget centre. Always fixed.
+        self.sigma_anc = (
+            float(sigma_anc)
+            if sigma_anc is not None
+            else (self.sigma if self.sigma is not None else self.sigma_fallback)
+        )
         self.gamma_anc = float(gamma_anc)
         self.centre_mode = centre_mode
         self.ball_k = int(ball_k)
@@ -86,12 +111,31 @@ class DiffusionSBRUTSD(DiffusionSimpleTSD):
         computed in ``E``'s dtype; callers cast to float32 for the distance/kernel."""
         return log_p.exp().to(E.dtype) @ E
 
-    def _kernel(self, u, v, sigma=None):
-        """``k_sigma(u, v) = exp(-||u - v||^2 / 2 sigma^2)`` reduced over ``d`` -> ``[b, l]``.
-        ``sigma`` defaults to the repulsion bandwidth; the anchor term passes ``sigma_anc``."""
-        s = self.sigma if sigma is None else sigma
+    def _kernel(self, u, v, sigma=None, h=None):
+        """RBF kernel reduced over ``d`` -> ``[b, l]``. With ``h`` given, the SVGD-style
+        ``k(u, v) = exp(-||u - v||^2 / h)``; otherwise the fixed ``exp(-||u - v||^2 /
+        2 sigma^2)`` (``sigma`` defaults to the repulsion bandwidth, the anchor passes
+        ``sigma_anc``)."""
         sq = ((u - v) ** 2).sum(-1)
+        if h is not None:
+            return torch.exp(-sq / h)
+        s = self.sigma if sigma is None else sigma
         return torch.exp(-sq / (2.0 * s**2))
+
+    @staticmethod
+    def _median_bandwidth(points):
+        """SVGD median heuristic ``h = med^2 / log(n)`` for ``k(x, x') = exp(-||x - x'||^2 /
+        h)``, where ``med`` is the median pairwise distance between the ``points [n, d]``.
+        Returns a detached scalar tensor, or ``None`` when the heuristic degenerates
+        (``n < 2`` or all points coincide -> ``med = 0``)."""
+        n = points.shape[0]
+        if n < 2:
+            return None
+        with torch.no_grad():
+            med = torch.pdist(points.float()).median()
+            if not (float(med) > 0.0):
+                return None
+            return med**2 / math.log(n)
 
     @torch.no_grad()
     def _ball_centre(self, gold_emb, E):
@@ -141,19 +185,33 @@ class DiffusionSBRUTSD(DiffusionSimpleTSD):
         y_base = torch.where(prompt, self.mask_id, y_m)
         a = self._teacher_soft_emb(y_base, attention_mask, E)
 
-        L_rep = self._kernel(e_hat, c)                       # [b, l], in [0, 1]
+        sel = ctx["a_hat"] & answer_mask
+        # Repulsion bandwidth: SVGD median heuristic over the current forget-position soft
+        # embeddings, recomputed each draw; fall back to the fixed sigma_fallback when the
+        # batch is degenerate. h uses the exp(-||.||^2 / h) convention (h = 2 sigma^2).
+        h_rep = None
+        if self.median_bandwidth:
+            h_rep = self._median_bandwidth(e_hat[sel])
+            if h_rep is None:
+                h_rep = e_hat.new_tensor(2.0 * self.sigma_fallback**2)
+        L_rep = self._kernel(e_hat, c, h=h_rep)              # [b, l], in [0, 1]
         L_anc = self._kernel(e_hat, a, sigma=self.sigma_anc)  # [b, l], in (0, 1]
         kl_f = L_rep - self.gamma_anc * L_anc                 # bounded in [-gamma_anc, 1]
 
         with torch.no_grad():
             removed = (e_hat - c).norm(dim=-1)  # dist_c, logged as removed_mass by the base
-            sel = ctx["a_hat"] & answer_mask
             if bool(sel.any()):
+                sigma_rep = (
+                    float((h_rep / 2.0) ** 0.5)
+                    if h_rep is not None
+                    else float(self.sigma)
+                )
                 self._method_metrics = {
                     "sbru_tsd/L_rep": float(L_rep[sel].mean()),
                     "sbru_tsd/L_anc": float(L_anc[sel].mean()),
                     "sbru_tsd/dist_c": float(removed[sel].mean()),
                     "sbru_tsd/dist_a": float((e_hat - a).norm(dim=-1)[sel].mean()),
+                    "sbru_tsd/sigma_rep": sigma_rep,
                 }
             else:
                 self._method_metrics = None
