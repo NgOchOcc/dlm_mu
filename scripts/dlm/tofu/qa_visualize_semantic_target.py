@@ -4,16 +4,16 @@
 Selected 0-based positions in the tokenized labelled answer are masked together in
 one frozen-teacher pass while unselected answer tokens remain visible. For every
 selected position, the report compares the normalized teacher distribution ``p0``
-with the production Semantic_Unlearn target
+with the selected production Semantic_Unlearn target
 
-    q*(v) = p0(v) exp(-eta k(v)) / Z,
-    k(v) = exp(-||E_v - E_gold||^2 / h).
+    q*(v) = p0(v) exp(-eta s(v)) / Z,
 
-The production trainer's own ``_semantic_kernels`` and ``_tilted_target`` methods
-construct the target. The model's frozen input embeddings supply ``E`` and both
-logits and embeddings are restricted to ``len(tokenizer)`` exactly as in training.
-A self-contained HTML report, compact JSONL audit record, and summary JSON are
-written under the same output stem.
+where ``s(v)`` is either the RBF kernel or ``cos(E_v, E_gold) - 1``. The
+production trainer's own score and target methods construct the distribution.
+The model's frozen input embeddings supply ``E`` and both logits and embeddings
+are restricted to ``len(tokenizer)`` exactly as in training. A self-contained
+HTML report, compact JSONL audit record, and summary JSON are written under the
+same output stem.
 """
 
 import argparse
@@ -69,7 +69,7 @@ DiffusionSemanticUnlearn = _load_semantic_unlearn_class()
 
 
 ETA_ZERO_ATOL = 2e-6
-GOLD_KERNEL_ATOL = 2e-6
+GOLD_SCORE_ATOL = 2e-6
 NORMALIZATION_ATOL = 2e-5
 
 
@@ -186,6 +186,7 @@ def _load_dlm(
 def _build_probe(
     vocab_size: int,
     eta: float,
+    target_mode: str,
     sigma_fallback: float,
     center_chunk_size: int,
     vocab_chunk_size: int,
@@ -200,6 +201,7 @@ def _build_probe(
     probe = object.__new__(DiffusionSemanticUnlearn)
     probe.vocab_size = int(vocab_size)
     probe.eta = float(eta)
+    probe.target_mode = target_mode
     probe.sigma_fallback = float(sigma_fallback)
     probe.center_chunk_size = _positive_integer(center_chunk_size, "--center-chunk-size")
     probe.vocab_chunk_size = _positive_integer(vocab_chunk_size, "--vocab-chunk-size")
@@ -219,7 +221,7 @@ def _entropy(probabilities: torch.Tensor) -> float:
 def _top_rows(
     probabilities: torch.Tensor,
     raw_probabilities: torch.Tensor,
-    kernel: torch.Tensor,
+    semantic_score: torch.Tensor,
     cosine_similarity: torch.Tensor,
     tokenizer,
     top_n: int,
@@ -238,7 +240,7 @@ def _top_rows(
                 "is_gold": int(token_id) == int(gold_id),
                 "prob": float(probability),
                 "raw_prob": float(raw_probabilities[token_id].item()),
-                "kernel": float(kernel[token_id].item()),
+                "score": float(semantic_score[token_id].item()),
                 "cosine": float(cosine_similarity[token_id].item()),
             }
         )
@@ -253,7 +255,7 @@ def _top_rows(
                 "below_top_n": True,
                 "prob": float(probabilities[gold_id].item()),
                 "raw_prob": float(raw_probabilities[gold_id].item()),
-                "kernel": float(kernel[gold_id].item()),
+                "score": float(semantic_score[gold_id].item()),
                 "cosine": float(cosine_similarity[gold_id].item()),
             }
         )
@@ -263,20 +265,21 @@ def _top_rows(
 def _panel(
     probabilities: torch.Tensor,
     raw_probabilities: torch.Tensor,
-    kernel: torch.Tensor,
+    semantic_score: torch.Tensor,
     cosine_similarity: torch.Tensor,
+    score_label: str,
     tokenizer,
     top_n: int,
     gold_id: int,
     label: str,
     eta: Optional[float],
-    bandwidth: float,
+    bandwidth: Optional[float],
     fallback_used: bool,
 ) -> Dict[str, Any]:
     rows = _top_rows(
         probabilities,
         raw_probabilities,
-        kernel,
+        semantic_score,
         cosine_similarity,
         tokenizer,
         top_n,
@@ -290,9 +293,10 @@ def _panel(
         "top1": float(probabilities.max().item()),
         "entropy": _entropy(probabilities),
         "sum": float(probabilities.sum().item()),
-        "bandwidth": float(bandwidth),
+        "score_label": score_label,
+        "bandwidth": None if bandwidth is None else float(bandwidth),
         "fallback_used": bool(fallback_used),
-        "gold_kernel": float(kernel[gold_id].item()),
+        "gold_score": float(semantic_score[gold_id].item()),
         "rows": rows,
     }
 
@@ -340,6 +344,7 @@ def _analyze_example(
     example: Dict[str, Any],
     right_shift_logits: bool,
     etas: Sequence[float],
+    target_mode: str,
     sigma_fallback: float,
     center_chunk_size: int,
     vocab_chunk_size: int,
@@ -399,30 +404,53 @@ def _analyze_example(
     probe = _build_probe(
         vocab_size,
         etas[0],
+        target_mode,
         sigma_fallback,
         center_chunk_size,
         vocab_chunk_size,
     )
     unique_ids, inverse = torch.unique(gold_ids, sorted=True, return_inverse=True)
-    unique_kernels, unique_bandwidths, unique_fallback_flags = (
-        _semantic_kernels_with_fallbacks(probe, unique_ids, E)
-    )
-    kernels = unique_kernels[inverse]
-    bandwidths = unique_bandwidths[inverse]
-    fallback_flags = unique_fallback_flags[inverse]
     normalized_embeddings = F.normalize(E.float(), dim=-1)
-    cosine_similarities = normalized_embeddings[gold_ids] @ normalized_embeddings.T
+    cosine_similarities = (
+        normalized_embeddings[gold_ids] @ normalized_embeddings.T
+    ).clamp_(-1.0, 1.0)
+    if target_mode == "rbf":
+        unique_scores, unique_bandwidths, unique_fallback_flags = (
+            _semantic_kernels_with_fallbacks(probe, unique_ids, E)
+        )
+        semantic_scores = unique_scores[inverse]
+        bandwidths: List[Optional[float]] = [
+            float(value) for value in unique_bandwidths[inverse].tolist()
+        ]
+        fallback_flags = [
+            bool(value) for value in unique_fallback_flags[inverse].tolist()
+        ]
+        score_label = "k"
+        expected_gold_score = 1.0
+    else:
+        unique_scores = probe._semantic_scores(unique_ids, E)
+        semantic_scores = unique_scores[inverse]
+        bandwidths = [None] * len(gold_ids)
+        fallback_flags = [False] * len(gold_ids)
+        score_label = "cos-1"
+        expected_gold_score = 0.0
 
     targets: Dict[float, Tuple[torch.Tensor, torch.Tensor]] = {}
     for eta in etas:
         probe.eta = float(eta)
-        targets[eta] = probe._tilted_target(log_p0, kernels)
+        targets[eta] = probe._tilted_target(log_p0, semantic_scores)
 
     eta_zero_error = 0.0
     if 0.0 in targets:
         eta_zero_error = float((targets[0.0][1] - raw_probabilities).abs().max().item())
-    gold_kernel_error = float(
-        (kernels.gather(1, gold_ids.unsqueeze(1)).squeeze(1) - 1.0).abs().max().item()
+    gold_score_error = float(
+        (
+            semantic_scores.gather(1, gold_ids.unsqueeze(1)).squeeze(1)
+            - expected_gold_score
+        )
+        .abs()
+        .max()
+        .item()
     )
     raw_sum_error = float((raw_probabilities.sum(-1) - 1.0).abs().max().item())
     target_sum_error = max(
@@ -435,10 +463,10 @@ def _analyze_example(
         raise RuntimeError(
             f"eta=0 invariant failed: max |q-p0|={eta_zero_error:.3e} > {ETA_ZERO_ATOL:.1e}"
         )
-    if gold_kernel_error > GOLD_KERNEL_ATOL:
+    if gold_score_error > GOLD_SCORE_ATOL:
         raise RuntimeError(
-            "gold self-kernel invariant failed: "
-            f"max |k(gold)-1|={gold_kernel_error:.3e} > {GOLD_KERNEL_ATOL:.1e}"
+            "gold self-score invariant failed: "
+            f"error={gold_score_error:.3e} > {GOLD_SCORE_ATOL:.1e}"
         )
     if normalization_error > NORMALIZATION_ATOL:
         raise RuntimeError(
@@ -453,16 +481,17 @@ def _analyze_example(
         if is_special and not include_special_tokens:
             continue
         raw = raw_probabilities[selected_offset]
-        kernel = kernels[selected_offset]
+        semantic_score = semantic_scores[selected_offset]
         cosine_similarity = cosine_similarities[selected_offset]
-        bandwidth = float(bandwidths[selected_offset].item())
-        fallback_used = bool(fallback_flags[selected_offset].item())
+        bandwidth = bandwidths[selected_offset]
+        fallback_used = fallback_flags[selected_offset]
         panels = [
             _panel(
                 raw,
                 raw,
-                kernel,
+                semantic_score,
                 cosine_similarity,
+                score_label,
                 tokenizer,
                 top_n,
                 gold_id,
@@ -477,8 +506,9 @@ def _analyze_example(
                 _panel(
                     targets[eta][1][selected_offset],
                     raw,
-                    kernel,
+                    semantic_score,
                     cosine_similarity,
+                    score_label,
                     tokenizer,
                     top_n,
                     gold_id,
@@ -500,7 +530,7 @@ def _analyze_example(
                 "is_special": is_special,
                 "bandwidth": bandwidth,
                 "fallback_used": fallback_used,
-                "gold_kernel": float(kernel[gold_id].item()),
+                "gold_score": float(semantic_score[gold_id].item()),
                 "panels": panels,
             }
         )
@@ -516,6 +546,7 @@ def _analyze_example(
         "id": example["id"],
         "question": example["question"],
         "answer": example["answer"],
+        "target_mode": target_mode,
         "mask_positions": selected_indices,
         "n_answer_tokens": int(answer_positions.numel()),
         "n_positions_total": len(selected_indices),
@@ -524,7 +555,7 @@ def _analyze_example(
     }
     diagnostics = {
         "eta_zero_max_abs_error": eta_zero_error,
-        "gold_kernel_max_abs_error": gold_kernel_error,
+        "gold_score_max_abs_error": gold_score_error,
         "normalization_max_abs_error": normalization_error,
         "logit_vocab_size": int(full_log_probs.shape[-1]),
         "embedding_vocab_size": int(E.shape[0]),
@@ -536,7 +567,9 @@ def _format_probability(value: float) -> str:
     return base._format_probability(value)
 
 
-def _render_rows(rows: Sequence[Dict[str, Any]], is_raw: bool) -> str:
+def _render_rows(
+    rows: Sequence[Dict[str, Any]], is_raw: bool, score_label: str
+) -> str:
     max_probability = max((float(row["prob"]) for row in rows), default=0.0)
     rendered: List[str] = []
     for row in rows:
@@ -555,7 +588,8 @@ def _render_rows(rows: Sequence[Dict[str, Any]], is_raw: bool) -> str:
         display = html.escape(row["display"], quote=True)
         exact = html.escape(
             f"token id {row['id']}; shown probability {probability:.17g}; "
-            f"raw p0 {row['raw_prob']:.17g}; semantic kernel {row['kernel']:.17g}; "
+            f"raw p0 {row['raw_prob']:.17g}; semantic score "
+            f"{score_label}={row['score']:.17g}; "
             f"cosine similarity {row['cosine']:.17g}",
             quote=True,
         )
@@ -568,7 +602,7 @@ def _render_rows(rows: Sequence[Dict[str, Any]], is_raw: bool) -> str:
             f'<span class="bar-fill" style="width:{width:.4f}%"></span></span></td>'
             f'<td class="number" aria-label="{probability_label}">{_format_probability(probability)}</td>'
             f'<td class="number raw">{_format_probability(float(row["raw_prob"]))}</td>'
-            f'<td class="number kernel">{float(row["kernel"]):.4f}</td>'
+            f'<td class="number score">{float(row["score"]):.4f}</td>'
             f'<td class="number cosine">{float(row["cosine"]):.4f}</td></tr>'
         )
     return "".join(rendered)
@@ -578,6 +612,10 @@ def _render_panel(panel: Dict[str, Any]) -> str:
     is_raw = panel["eta"] is None
     title = "Raw teacher p0" if is_raw else f"Semantic target · η={_eta_text(panel['eta'])}"
     fallback = " · fallback" if panel["fallback_used"] else ""
+    score_label = html.escape(panel["score_label"])
+    bandwidth = ""
+    if panel["bandwidth"] is not None:
+        bandwidth = f'<span>h <b>{panel["bandwidth"]:.4e}</b>{fallback}</span>'
     return (
         '<section class="panel">'
         f'<h4>{html.escape(title)}</h4>'
@@ -587,12 +625,14 @@ def _render_panel(panel: Dict[str, Any]) -> str:
         f'<span>top-1 <b>{_format_probability(panel["top1"])}</b></span>'
         f'<span>H <b>{panel["entropy"]:.3f}</b> nats</span>'
         f'<span>Σ <b>{panel["sum"]:.6f}</b></span>'
-        f'<span>h <b>{panel["bandwidth"]:.4e}</b>{fallback}</span>'
-        f'<span>k(GT) <b>{panel["gold_kernel"]:.6f}</b></span></div>'
+        f'{bandwidth}'
+        f'<span>{score_label}(GT) <b>{panel["gold_score"]:.6f}</b></span></div>'
         '<table class="distribution"><thead><tr><th scope="col">token</th>'
         '<th scope="col">relative probability</th><th scope="col">shown</th>'
-        '<th scope="col">p0</th><th scope="col">k</th><th scope="col">cos</th></tr></thead>'
-        f'<tbody>{_render_rows(panel["rows"], is_raw)}</tbody></table></section>'
+        f'<th scope="col">p0</th><th scope="col">{score_label}</th>'
+        '<th scope="col">cos</th></tr></thead>'
+        f'<tbody>{_render_rows(panel["rows"], is_raw, score_label)}</tbody>'
+        '</table></section>'
     )
 
 
@@ -627,7 +667,17 @@ def _write_html(path: Path, records: Sequence[Dict[str, Any]], summary: Dict[str
     eta_text = ", ".join(_eta_text(eta) for eta in summary["etas"])
     checkpoint = html.escape(summary["checkpoint"], quote=True)
     model = html.escape(summary["model"], quote=True)
+    target_mode = html.escape(summary["target_mode"], quote=True)
+    formula = html.escape(summary["formula"], quote=True)
+    score_label = html.escape(summary["score_label"], quote=True)
     invariant = summary["invariants"]
+    if summary["bandwidth"] is None:
+        bandwidth_stat = '<span>bandwidth <b>not used</b></span>'
+    else:
+        bandwidth_stat = (
+            '<span>fallback bandwidths '
+            f'<b>{summary["bandwidth"]["fallback_count"]}</b></span>'
+        )
     document = f"""<!doctype html>
 <html lang="en" data-theme="dark">
 <head>
@@ -692,7 +742,7 @@ th {{ width:105px; text-align:left; overflow:hidden; }}
 .bar-cell {{ width:auto; }} .bar-track {{ display:block; height:9px; background:var(--grid); border-radius:0 5px 5px 0; overflow:hidden; }}
 .bar-fill {{ display:block; height:100%; background:var(--blue); border-radius:0 5px 5px 0; }}
 .number {{ width:70px; text-align:right; color:var(--secondary); font:9px ui-monospace,SFMono-Regular,Consolas,monospace; font-variant-numeric:tabular-nums; }}
-.number.kernel {{ width:48px; }} .number.cosine {{ width:48px; }} .number.raw {{ width:70px; }}
+.number.score {{ width:48px; }} .number.cosine {{ width:48px; }} .number.raw {{ width:70px; }}
 .ground-truth {{ background:var(--gold-soft); }} .ground-truth .bar-fill {{ background:var(--gold); }} .ground-truth .token {{ font-weight:700; }}
 @media (max-width:760px) {{ header {{ position:static; }} .header-top {{ display:block; }} .controls {{ margin-top:9px; }} main {{ padding:12px; }} .qa b {{ display:block; min-width:0; }} .panels {{ grid-template-columns:1fr; }} .number.raw {{ display:none; }} }}
 @media print {{ header {{ position:static; }} .controls,.search-row {{ display:none; }} .example {{ break-inside:avoid; }} }}
@@ -701,14 +751,14 @@ th {{ width:105px; text-align:left; overflow:hidden; }}
 <body>
 <header>
   <div class="header-top"><div><h1>Semantic_Unlearn target distributions</h1>
-    <div class="subtitle">{model} · {checkpoint} · q*(v) ∝ p0(v) exp(-η k(v)); selected answer positions masked simultaneously</div></div>
+    <div class="subtitle">{model} · {checkpoint} · mode={target_mode} · {formula}; selected answer positions masked simultaneously</div></div>
     <div class="controls"><button id="theme" type="button" aria-label="Toggle light and dark theme">Light theme</button></div>
   </div>
   <div class="stats">
     <span><b>{summary['n_positions_rendered']}</b> shown / <b>{summary['n_positions_selected']}</b> selected positions</span>
     <span>η <b>{html.escape(eta_text)}</b></span>
     <span>vocabulary <b>{summary['vocab_size']:,}</b></span>
-    <span>fallback bandwidths <b>{summary['bandwidth']['fallback_count']}</b></span>
+    {bandwidth_stat}
     <span>eta-0 error <b>{invariant['eta_zero_max_abs_error']:.2e}</b></span>
     <span>normalization error <b>{invariant['normalization_max_abs_error']:.2e}</b></span>
   </div>
@@ -716,7 +766,7 @@ th {{ width:105px; text-align:left; overflow:hidden; }}
 </header>
 <main>
   <p class="legend"><span class="legend-mark blue"></span>distribution token
-    <span class="legend-mark gold"></span>ground-truth center (also labelled GT). Bars are relative within each panel; the table gives shown probability, raw p0, semantic kernel k, and embedding cosine similarity. Use ↑/↓ or j/k to move between positions.</p>
+    <span class="legend-mark gold"></span>ground-truth center (also labelled GT). Bars are relative within each panel; the table gives shown probability, raw p0, semantic score {score_label}, and embedding cosine similarity. Use ↑/↓ or j/k to move between positions.</p>
   {examples_html}
 </main>
 <script>
@@ -770,29 +820,58 @@ def _summarize(
         }
         for metric in ("gold_prob", "top1", "entropy", "sum")
     }
-    bandwidths = [position["bandwidth"] for position in positions]
+    bandwidths = [
+        position["bandwidth"]
+        for position in positions
+        if position["bandwidth"] is not None
+    ]
     fallback_count = sum(int(position["fallback_used"]) for position in positions)
-    sorted_bandwidths = sorted(bandwidths)
-    midpoint = len(sorted_bandwidths) // 2
-    if len(sorted_bandwidths) % 2:
-        median_bandwidth = sorted_bandwidths[midpoint]
+    if bandwidths:
+        sorted_bandwidths = sorted(bandwidths)
+        midpoint = len(sorted_bandwidths) // 2
+        if len(sorted_bandwidths) % 2:
+            median_bandwidth = sorted_bandwidths[midpoint]
+        else:
+            median_bandwidth = (
+                sorted_bandwidths[midpoint - 1] + sorted_bandwidths[midpoint]
+            ) / 2.0
+        bandwidth_summary = {
+            "min": min(bandwidths),
+            "max": max(bandwidths),
+            "mean": sum(bandwidths) / len(bandwidths),
+            "median": median_bandwidth,
+            "fallback_count": fallback_count,
+            "fallback_fraction": fallback_count / len(bandwidths),
+        }
     else:
-        median_bandwidth = (sorted_bandwidths[midpoint - 1] + sorted_bandwidths[midpoint]) / 2.0
+        bandwidth_summary = None
     eta_zero_checked = 0.0 in args.etas
+    if args.target_mode == "rbf":
+        formula = "q*(v) = normalize(p0(v) * exp(-eta * k(v)))"
+        score = "k(v) = exp(-||E_v-E_gold||^2/h), h=median(d^2)/log(|V|)"
+        score_label = "k"
+        expected_gold_score = 1.0
+    else:
+        formula = "q*(v) = normalize(p0(v) * exp(-eta * (cos(v,c) - 1)))"
+        score = "s(v) = cos(E_v, E_gold) - 1"
+        score_label = "cos-1"
+        expected_gold_score = 0.0
     return {
         "model": args.model,
         "checkpoint": checkpoint,
+        "target_mode": args.target_mode,
         "dtype": args.dtype,
         "device_map": args.device_map,
         "gpu_memory": args.gpu_memory if args.device_map == "auto" else None,
         "cpu_memory": args.cpu_memory if args.device_map == "auto" else None,
         "right_shift_logits": bool(right_shift_logits),
-        "formula": "q*(v) = normalize(p0(v) * exp(-eta * k(v)))",
-        "kernel": "k(v) = exp(-||E_v-E_gold||^2/h), h=median(d^2)/log(|V|)",
+        "formula": formula,
+        "semantic_score": score,
+        "score_label": score_label,
         "masking": "selected labelled answer positions simultaneously; unselected answer tokens visible",
         "mask_positions": records[0]["mask_positions"],
         "etas": list(args.etas),
-        "sigma_fallback": args.sigma_fallback,
+        "sigma_fallback": args.sigma_fallback if args.target_mode == "rbf" else None,
         "center_chunk_size": args.center_chunk_size,
         "vocab_chunk_size": args.vocab_chunk_size,
         "top_n": args.top_n,
@@ -809,23 +888,18 @@ def _summarize(
         "mean_top1": means["top1"],
         "mean_entropy": means["entropy"],
         "mean_probability_sum": means["sum"],
-        "bandwidth": {
-            "min": min(bandwidths),
-            "max": max(bandwidths),
-            "mean": sum(bandwidths) / len(bandwidths),
-            "median": median_bandwidth,
-            "fallback_count": fallback_count,
-            "fallback_fraction": fallback_count / len(bandwidths),
-        },
+        "bandwidth": bandwidth_summary,
         "invariants": {
             "eta_zero_checked": eta_zero_checked,
             "eta_zero_max_abs_error": diagnostics["eta_zero_max_abs_error"],
             "eta_zero_tolerance": ETA_ZERO_ATOL,
             "eta_zero_pass": (not eta_zero_checked)
             or diagnostics["eta_zero_max_abs_error"] <= ETA_ZERO_ATOL,
-            "gold_kernel_max_abs_error": diagnostics["gold_kernel_max_abs_error"],
-            "gold_kernel_tolerance": GOLD_KERNEL_ATOL,
-            "gold_kernel_pass": diagnostics["gold_kernel_max_abs_error"] <= GOLD_KERNEL_ATOL,
+            "gold_score_expected": expected_gold_score,
+            "gold_score_max_abs_error": diagnostics["gold_score_max_abs_error"],
+            "gold_score_tolerance": GOLD_SCORE_ATOL,
+            "gold_score_pass": diagnostics["gold_score_max_abs_error"]
+            <= GOLD_SCORE_ATOL,
             "normalization_max_abs_error": diagnostics["normalization_max_abs_error"],
             "normalization_tolerance": NORMALIZATION_ATOL,
             "normalization_pass": diagnostics["normalization_max_abs_error"] <= NORMALIZATION_ATOL,
@@ -858,6 +932,12 @@ def _build_parser() -> argparse.ArgumentParser:
         default=["0", "1", "10"],
         metavar="ETA",
         help="non-negative target strengths; accepts space- or comma-separated values",
+    )
+    parser.add_argument(
+        "--target-mode",
+        choices=("rbf", "cosine"),
+        default="rbf",
+        help="semantic score used to construct the target (default: rbf)",
     )
     parser.add_argument("--sigma-fallback", type=float, default=0.05)
     parser.add_argument("--center-chunk-size", type=int, default=8)
@@ -932,7 +1012,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     right_shift_logits = base.MODEL_PRESETS[args.model]["right_shift_logits"]
     print(
         f"[semantic-viz] loading {checkpoint} (model={args.model}, dtype={args.dtype}, "
-        f"device_map={args.device_map}, right_shift_logits={right_shift_logits})",
+        f"device_map={args.device_map}, target_mode={args.target_mode}, "
+        f"right_shift_logits={right_shift_logits})",
         flush=True,
     )
     try:
@@ -959,6 +1040,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             example,
             right_shift_logits,
             args.etas,
+            args.target_mode,
             args.sigma_fallback,
             args.center_chunk_size,
             args.vocab_chunk_size,

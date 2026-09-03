@@ -266,6 +266,20 @@ The TOFU experiment configuration is
 [`configs/experiment/unlearn/tofu/dlm_semantic_unlearn.yaml`](../configs/experiment/unlearn/tofu/dlm_semantic_unlearn.yaml).
 It removes `data.retain` entirely.
 
+### Visualizing a target distribution
+
+Edit the configuration block in
+[`run_qa_semantic_target_vis.sh`](../scripts/dlm/tofu/run_qa_semantic_target_vis.sh)
+and set `TARGET_MODE="rbf"` or `TARGET_MODE="cosine"`, then run:
+
+```bash
+bash scripts/dlm/tofu/run_qa_semantic_target_vis.sh
+```
+
+The HTML and JSON reports record the selected mode and its exact production
+formula. RBF reports its kernel bandwidth and fallback diagnostics; cosine
+reports the shifted score $\cos(E_v,c)-1$ and marks bandwidth as unused.
+
 ## 9. Source map
 
 | Responsibility | File |
@@ -276,3 +290,5 @@ It removes `data.retain` entirely.
 | Trainer defaults | [`configs/trainer/DiffusionSemanticUnlearn.yaml`](../configs/trainer/DiffusionSemanticUnlearn.yaml) |
 | TOFU experiment | [`configs/experiment/unlearn/tofu/dlm_semantic_unlearn.yaml`](../configs/experiment/unlearn/tofu/dlm_semantic_unlearn.yaml) |
 | TOFU launcher | [`scripts/dlm/tofu/run_semantic_unlearn.sh`](../scripts/dlm/tofu/run_semantic_unlearn.sh) |
+| Interactive target-visualization launcher | [`scripts/dlm/tofu/run_qa_semantic_target_vis.sh`](../scripts/dlm/tofu/run_qa_semantic_target_vis.sh) |
+| Target-visualization implementation | [`scripts/dlm/tofu/qa_visualize_semantic_target.py`](../scripts/dlm/tofu/qa_visualize_semantic_target.py) |
