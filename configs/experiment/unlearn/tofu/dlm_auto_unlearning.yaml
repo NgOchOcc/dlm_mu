@@ -1,0 +1,44 @@
+# @package _global_
+# Forget-only closed-form Auto Unlearning for masked-diffusion LMs on TOFU.
+# The target extrapolates from the conditional frozen teacher through its
+# prompt-masked distribution. There is no retain dataset or denoising NLL.
+defaults:
+  - override /model: LLaDA-8B-Instruct
+  - override /trainer: DiffusionAutoUnlearning
+  - override /data: unlearn
+  - override /data/datasets@data.forget: TOFU_QA_forget
+  - override /data/datasets@data.retain: null
+  - override /eval: tofu_dlm
+
+forget_split: forget10
+retain_split: retain90
+holdout_split: holdout10
+question_key: "question"
+
+# Dream needs right-shifted logits. The launcher supplies this automatically.
+# Auto Unlearning uses an unweighted mean of reverse KL over masked answer
+# positions; the configured diffusion scheduler still samples the noised state.
+
+eval:
+  tofu_dlm:
+    forget_split: ${forget_split}
+    holdout_split: ${holdout_split}
+    overwrite: true
+    question_key: ${question_key}
+
+data:
+  anchor: forget
+  forget:
+    TOFU_QA_forget:
+      args:
+        hf_args:
+          name: ${forget_split}
+
+trainer:
+  args:
+    warmup_epochs: 1.0
+    learning_rate: 1e-5
+    weight_decay: 0.01
+    num_train_epochs: 9
+
+task_name: ???

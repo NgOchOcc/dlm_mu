@@ -31,6 +31,7 @@ from trainer.dlm.unlearn import (
     DiffusionTSD,
     DiffusionSimpleTSD,
     DiffusionSemanticUnlearn,
+    DiffusionAutoUnlearning,
     DiffusionSimpleTSDQMask,
     DiffusionUTSD,
     DiffusionCSD,
@@ -141,6 +142,7 @@ _register_trainer(DiffusionAURA)
 _register_trainer(DiffusionTSD)
 _register_trainer(DiffusionSimpleTSD)
 _register_trainer(DiffusionSemanticUnlearn)
+_register_trainer(DiffusionAutoUnlearning)
 _register_trainer(DiffusionSimpleTSDQMask)
 _register_trainer(DiffusionUTSD)
 _register_trainer(DiffusionCSD)
