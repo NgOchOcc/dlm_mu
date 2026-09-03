@@ -138,24 +138,24 @@ def tokenwise_vocab_logprobs_diffusion(
     right_shift_logits=False,
     mask_token_id=None,
     return_labels=False,
+    mask_override=None,
 ):
     """DLM counterpart of ``tokenwise_vocab_logprobs`` for greedy-reconstruction
     metrics (exact memorization, extraction strength).
 
     A masked diffusion model predicts the token *at* a masked position rather
-    than the *next* token, so there is no teacher-forced shift. We fully mask
-    every answer position (``labels != IGNORE_INDEX``) in a single forward pass
-    — the one-shot reconstruction regime — and read off the per-position vocab
-    log-probabilities at those positions. This yields, per example, the model's
-    argmax reconstruction of each answer token, matching the semantics of the
-    autoregressive helper (distribution over the true target token at each
-    labelled position).
+    than the *next* token, so there is no teacher-forced shift. By default, we
+    fully mask every answer position (``labels != IGNORE_INDEX``) in a single
+    forward pass — the one-shot reconstruction regime — and read off the
+    per-position vocabulary log-probabilities at those positions. ``mask_override``
+    may instead select a subset of labelled answer positions while leaving the
+    other ground-truth answer tokens visible as context.
 
     Returns:
         log_probs_batch (List[Tensor]): per example, shape (N, V) over the N
-            answer positions.
-        labels_batch (List[Tensor]): per example, the gold answer tokens (N,).
-            Returned only when ``return_labels`` is True.
+            selected answer positions.
+        labels_batch (List[Tensor]): per example, the selected gold answer tokens
+            (N,). Returned only when ``return_labels`` is True.
     """
     assert mask_token_id is not None, "mask_token_id must be provided for DLM EM/ES"
     device = model.device
@@ -164,6 +164,21 @@ def tokenwise_vocab_logprobs_diffusion(
     attention_mask = batch.get("attention_mask", None)
     if attention_mask is not None:
         attention_mask = attention_mask.to(device)
+
+    selected_mask = None
+    if mask_override is not None:
+        if not isinstance(mask_override, torch.Tensor):
+            raise TypeError("mask_override must be a torch.Tensor")
+        if mask_override.dtype != torch.bool:
+            raise TypeError("mask_override must have dtype torch.bool")
+        if mask_override.shape != labels.shape:
+            raise ValueError(
+                "mask_override must match labels shape "
+                f"{tuple(labels.shape)}, got {tuple(mask_override.shape)}"
+            )
+        selected_mask = mask_override.to(device)
+        if bool((selected_mask & (labels == IGNORE_INDEX)).any()):
+            raise ValueError("mask_override may select only labelled answer positions")
 
     if right_shift_logits:
         from dllm.utils.data import prepend_bos
@@ -175,8 +190,21 @@ def tokenwise_vocab_logprobs_diffusion(
         )
         input_ids, labels = shifted["input_ids"], shifted["labels"]
         attention_mask = shifted.get("attention_mask", attention_mask)
+        if selected_mask is not None:
+            selected_mask = torch.cat(
+                [
+                    torch.zeros(
+                        selected_mask.shape[0],
+                        1,
+                        dtype=torch.bool,
+                        device=device,
+                    ),
+                    selected_mask,
+                ],
+                dim=1,
+            )
 
-    maskable = labels != IGNORE_INDEX
+    maskable = labels != IGNORE_INDEX if selected_mask is None else selected_mask
     noised = input_ids.clone()
     noised[maskable] = mask_token_id
 

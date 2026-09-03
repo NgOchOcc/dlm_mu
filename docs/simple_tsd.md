@@ -4,7 +4,7 @@
 
 **Simple Trajectory-Selective Distillation (SimpleTSD)** is a retain-set-free unlearning method for masked discrete diffusion language models (DLLMs).
 
-The method starts from a pretrained or fine-tuned model, freezes a copy as the teacher \(p_{\theta_0}\), and trains another copy \(p_\theta\) to:
+The method starts from a pretrained or fine-tuned model, freezes a copy as the teacher $p_{\theta_0}$, and trains another copy $p_\theta$ to:
 
 1. forget answer tokens whose prediction depends strongly on the forget prompt; and
 2. preserve the teacher's behavior on the remaining answer tokens.
@@ -97,27 +97,27 @@ combine the two losses and update the student
 
 | Symbol | Meaning |
 |---|---|
-| \(\mathcal D_f\) | Forget dataset containing question-answer pairs \((x,y)\). |
-| \(x\) | Forget question or prompt. |
-| \(y=(y_1,\ldots,y_L)\) | Answer containing \(L\) tokens. |
-| \(\widetilde y\) | Fully masked answer in the simplified selection algorithm. |
-| \(\theta_0\) | Frozen original model used as the teacher. |
-| \(\theta\) | Trainable student model initialized from \(\theta_0\). |
-| \(x_\varnothing\) | Input with the prompt content removed or replaced by masks. |
-| \(s_i\) | Prompt-dependence score for answer token \(y_i\). |
-| \(\tau\) | Fixed selection threshold, when fixed-threshold selection is used. |
-| \(\widehat{\mathcal A}\) | Selected forget-token positions. |
-| \(\mathcal M\) | Answer-token positions masked in one denoising state. |
-| \(y_{\mathcal M}\) | Partially masked answer produced from \(\mathcal M\). |
-| \(p^0_{\mathcal M,i}\) | Frozen teacher distribution at masked position \(i\). |
-| \(p^\theta_{\mathcal M,i}\) | Student distribution at masked position \(i\). |
-| \(q_{\mathcal M,i}\) | Edited teacher target at a selected forget position. |
-| \(F\) | Masked forget positions, \(F=\mathcal M\cap\widehat{\mathcal A}\). |
-| \(R\) | Masked self-distillation positions, \(R=\mathcal M\setminus\widehat{\mathcal A}\). |
-| \(\rho\) | Mask rate obtained from the DLLM diffusion schedule. |
-| \(\alpha\) | Weight assigned to the forget loss. The default is \(0.5\). |
-| \(\epsilon\) | Small numerical-stability constant, such as \(10^{-8}\). |
-| \(\mathcal V\) | Model vocabulary. |
+| $\mathcal D_f$ | Forget dataset containing question-answer pairs $(x,y)$. |
+| $x$ | Forget question or prompt. |
+| $y=(y_1,\ldots,y_L)$ | Answer containing $L$ tokens. |
+| $\widetilde y$ | Fully masked answer in the simplified selection algorithm. |
+| $\theta_0$ | Frozen original model used as the teacher. |
+| $\theta$ | Trainable student model initialized from $\theta_0$. |
+| $x_\varnothing$ | Input with the prompt content removed or replaced by masks. |
+| $s_i$ | Prompt-dependence score for answer token $y_i$. |
+| $\tau$ | Fixed selection threshold, when fixed-threshold selection is used. |
+| $\widehat{\mathcal A}$ | Selected forget-token positions. |
+| $\mathcal M$ | Answer-token positions masked in one denoising state. |
+| $y_{\mathcal M}$ | Partially masked answer produced from $\mathcal M$. |
+| $p^0_{\mathcal M,i}$ | Frozen teacher distribution at masked position $i$. |
+| $p^\theta_{\mathcal M,i}$ | Student distribution at masked position $i$. |
+| $q_{\mathcal M,i}$ | Edited teacher target at a selected forget position. |
+| $F$ | Masked forget positions, $F=\mathcal M\cap\widehat{\mathcal A}$. |
+| $R$ | Masked self-distillation positions, $R=\mathcal M\setminus\widehat{\mathcal A}$. |
+| $\rho$ | Mask rate obtained from the DLLM diffusion schedule. |
+| $\alpha$ | Weight assigned to the forget loss. The default is $0.5$. |
+| $\epsilon$ | Small numerical-stability constant, such as $10^{-8}$. |
+| $\mathcal V$ | Model vocabulary. |
 
 ---
 
@@ -125,14 +125,14 @@ combine the two losses and update the student
 
 ### 5.1 Prompt-dependence score
 
-For each answer position \(i\), SimpleTSD compares the frozen teacher's probability of the gold token in two contexts:
+For each answer position $i$, SimpleTSD compares the frozen teacher's probability of the gold token in two contexts:
 
 - **conditional context:** the question is visible; and
 - **promptless context:** the question content is blanked.
 
 The score is
 
-\[
+$$
 s_i =
 \mathbb E_{\mathcal M:i\in\mathcal M}
 \left[
@@ -140,9 +140,9 @@ s_i =
 -
 \log p_{\theta_0}(y_i\mid x_\varnothing,y_{\mathcal M})
 \right].
-\]
+$$
 
-A high score means that seeing the question substantially increases the teacher's belief in token \(y_i\). Such a token is treated as prompt-specific and is a candidate for forgetting.
+A high score means that seeing the question substantially increases the teacher's belief in token $y_i$. Such a token is treated as prompt-specific and is a candidate for forgetting.
 
 The current implementation estimates the expectation with `sel_mc` partial-mask draws. Partial masking is intentional: under a fully masked answer, the promptless teacher can become nearly uniform, causing almost every answer token to appear prompt-dependent.
 
@@ -152,25 +152,25 @@ The selection implementation is in [`_select_forget_positions`](../src/trainer/d
 
 The selected set is
 
-\[
+$$
 \widehat{\mathcal A}
 =
 \{i : y_i\text{ is selected by the configured score rule}\}.
-\]
+$$
 
 Three rules are supported:
 
 - **`otsu`** — the default; computes an adaptive threshold separately for each example;
 - **`topk`** — selects the configured top fraction of answer positions; and
-- **`tau`** — selects positions satisfying \(s_i\geq\tau\).
+- **`tau`** — selects positions satisfying $s_i\geq\tau$.
 
 Otsu and threshold selection are implemented in [`_otsu_threshold` and `_threshold_scores`](../src/trainer/dlm/unlearn/simple_tsd.py#L187-L223).
 
-When `drop_question_overlap=true`, answer words that merely repeat words already present in the question are removed from \(\widehat{\mathcal A}\). The prompt already exposes those surface forms, so treating them as hidden information can add unnecessary forgetting pressure. See [`_question_overlap_mask`](../src/trainer/dlm/unlearn/simple_tsd.py#L225-L249).
+When `drop_question_overlap=true`, answer words that merely repeat words already present in the question are removed from $\widehat{\mathcal A}$. The prompt already exposes those surface forms, so treating them as hidden information can add unnecessary forgetting pressure. See [`_question_overlap_mask`](../src/trainer/dlm/unlearn/simple_tsd.py#L225-L249).
 
 ### 5.3 Manual-span option
 
-If token-level forget spans are already known, selection can be skipped. A supplied answer mask is used directly as \(\widehat{\mathcal A}\), intersected with valid answer positions.
+If token-level forget spans are already known, selection can be skipped. A supplied answer mask is used directly as $\widehat{\mathcal A}$, intersected with valid answer positions.
 
 This path is implemented in [`_forget_context`](../src/trainer/dlm/unlearn/simple_tsd.py#L398-L442).
 
@@ -209,7 +209,7 @@ return Â
 
 ### 6.1 Sample a diffusion state
 
-For each active example, the method samples masked answer positions \(\mathcal M\). It then constructs the partially masked answer \(y_{\mathcal M}\) and evaluates both the frozen teacher and trainable student on the same state.
+For each active example, the method samples masked answer positions $\mathcal M$. It then constructs the partially masked answer $y_{\mathcal M}$ and evaluates both the frozen teacher and trainable student on the same state.
 
 The implementation supports two masking modes:
 
@@ -222,44 +222,44 @@ The masking implementations are [`_sample_mask`](../src/trainer/dlm/unlearn/simp
 
 The masked positions are partitioned into
 
-\[
+$$
 F=\mathcal M\cap\widehat{\mathcal A}
-\]
+$$
 
 and
 
-\[
+$$
 R=\mathcal M\setminus\widehat{\mathcal A}.
-\]
+$$
 
-- \(F\) receives the unlearning objective.
-- \(R\) receives the preservation objective.
+- $F$ receives the unlearning objective.
+- $R$ receives the preservation objective.
 
-An example with \(\widehat{\mathcal A}=\varnothing\) contributes no training loss.
+An example with $\widehat{\mathcal A}=\varnothing$ contributes no training loss.
 
 ### 6.3 Construct the forget target
 
-For every \(i\in F\), start from the frozen teacher distribution:
+For every $i\in F$, start from the frozen teacher distribution:
 
-\[
+$$
 q_{\mathcal M,i}\leftarrow p^0_{\mathcal M,i}.
-\]
+$$
 
 In the default `minimal` mode, remove the forgotten gold token:
 
-\[
+$$
 q_{\mathcal M,i}(y_i)\leftarrow 0.
-\]
+$$
 
 Then renormalize over the surviving vocabulary:
 
-\[
+$$
 Z_i=\sum_{v\in\mathcal V}q_{\mathcal M,i}(v),
 \qquad
 q_{\mathcal M,i}(v)
 \leftarrow
 \frac{q_{\mathcal M,i}(v)}{Z_i}.
-\]
+$$
 
 The implementation performs the relevant probability calculations in float32 and constructs the normalized target in log space for numerical stability.
 
@@ -271,7 +271,7 @@ Target construction is implemented in [`_demote_mask` and `_forget_kl`](../src/t
 
 The student is fitted to the edited target using
 
-\[
+$$
 \mathcal L_f
 =
 \frac{1}{|F|}
@@ -282,7 +282,7 @@ q_{\mathcal M,i}
 \;\|\;
 p^\theta_{\mathcal M,i}
 \right).
-\]
+$$
 
 The direction of this KL is important: the edited teacher target is the first argument, and the student is the second.
 
@@ -290,7 +290,7 @@ The direction of this KL is important: the edited teacher target is the first ar
 
 At masked positions not selected for forgetting, the student should preserve the original model:
 
-\[
+$$
 \mathcal L_d
 =
 \frac{1}{|R|}
@@ -301,27 +301,27 @@ p^0_{\mathcal M,i}
 \;\|\;
 p^\theta_{\mathcal M,i}
 \right).
-\]
+$$
 
 This term is the retain-free utility guard. It preserves behavior on non-selected parts of the answer without requiring examples from a separate retain dataset.
 
 ### 6.6 Combined loss
 
-When \(R\neq\varnothing\), the per-example loss is
+When $R\neq\varnothing$, the per-example loss is
 
-\[
+$$
 \mathcal L_{\mathrm{ex}}
 =
 \alpha\mathcal L_f
 +
 (1-\alpha)\mathcal L_d.
-\]
+$$
 
-When \(R=\varnothing\), the method uses
+When $R=\varnothing$, the method uses
 
-\[
+$$
 \mathcal L_{\mathrm{ex}}=\mathcal L_f.
-\]
+$$
 
 The fallback avoids shrinking the forget objective merely because a sampled state contains no self-distillation positions.
 
@@ -329,7 +329,7 @@ The reduction is implemented in [`_combine_draw`](../src/trainer/dlm/unlearn/sim
 
 ### 6.7 Multiple mask draws
 
-The configuration can use `loss_mc > 1` independent mask draws for the same selected set \(\widehat{\mathcal A}\). Their losses are averaged to reduce pathwise gradient variance.
+The configuration can use `loss_mc > 1` independent mask draws for the same selected set $\widehat{\mathcal A}$. Their losses are averaged to reduce pathwise gradient variance.
 
 During training, the code backpropagates each draw before creating the next student graph. This keeps peak activation memory close to one draw under DeepSpeed ZeRO-3. See [`compute_loss` and `training_step`](../src/trainer/dlm/unlearn/simple_tsd.py#L557-L618).
 
@@ -423,7 +423,7 @@ The TOFU experiment wiring is in [`configs/experiment/unlearn/tofu/dlm_simple_ts
 The original LaTeX specification in [`simple_tsd_algorithms.tex`](simple_tsd_algorithms.tex) presents the core method in a deliberately simplified form:
 
 - it scores tokens using one fully masked answer;
-- it uses a fixed threshold \(\tau\);
+- it uses a fixed threshold $\tau$;
 - it samples one mask set per example; and
 - it removes only the gold token from the forget target.
 

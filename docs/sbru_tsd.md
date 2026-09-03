@@ -72,19 +72,19 @@ repulsion and TSD self-distillation terms without anchor attraction.
 
 | Symbol | Meaning |
 |---|---|
-| \(x\) | Forget question or prompt. |
-| \(x_\varnothing\) | Promptless input obtained by masking the attended non-answer prompt tokens. |
-| \(y=(y_1,\ldots,y_L)\) | Gold answer tokens. |
-| \(p_{\theta_0}\) | Frozen original model (teacher). |
-| \(p_\theta\) | Trainable student initialized from the original model. |
-| \(\widehat{\mathcal A}\) | Answer positions selected for forgetting. |
-| \(\mathcal M\) | Answer positions masked in one sampled diffusion state. |
-| \(F=\mathcal M\cap\widehat{\mathcal A}\) | Masked positions that receive the SBRU forget objective. |
-| \(R=\mathcal M\setminus\widehat{\mathcal A}\) | Other masked answer positions that receive self-distillation. |
-| \(E\in\mathbb R^{|\mathcal V|\times d}\) | Detached output-embedding/unembedding matrix. |
-| \(\widehat e_i\) | Student's probability-weighted embedding at position \(i\). |
-| \(c_i\) | Forget-region center. |
-| \(a_i\) | Promptless frozen-teacher anchor. |
+| $x$ | Forget question or prompt. |
+| $x_\varnothing$ | Promptless input obtained by masking the attended non-answer prompt tokens. |
+| $y=(y_1,\ldots,y_L)$ | Gold answer tokens. |
+| $p_{\theta_0}$ | Frozen original model (teacher). |
+| $p_\theta$ | Trainable student initialized from the original model. |
+| $\widehat{\mathcal A}$ | Answer positions selected for forgetting. |
+| $\mathcal M$ | Answer positions masked in one sampled diffusion state. |
+| $F=\mathcal M\cap\widehat{\mathcal A}$ | Masked positions that receive the SBRU forget objective. |
+| $R=\mathcal M\setminus\widehat{\mathcal A}$ | Other masked answer positions that receive self-distillation. |
+| $E\in\mathbb R^{|\mathcal V|\times d}$ | Detached output-embedding/unembedding matrix. |
+| $\widehat e_i$ | Student's probability-weighted embedding at position $i$. |
+| $c_i$ | Forget-region center. |
+| $a_i$ | Promptless frozen-teacher anchor. |
 
 ### 2.2 Stage 1: select prompt-dependent answer positions
 
@@ -92,13 +92,13 @@ For each answer position, Prompt-Conditional Score Selection (PCSS) compares
 how likely the frozen teacher considers the gold token with the question present
 and with the question blanked:
 
-\[
+$$
 s_i = \mathbb E_{\mathcal M:i\in\mathcal M}
 \left[
 \log p_{\theta_0}(y_i\mid x,y_{\mathcal M})-
 \log p_{\theta_0}(y_i\mid x_\varnothing,y_{\mathcal M})
 \right].
-\]
+$$
 
 The implementation estimates this expectation with `sel_mc=8` independently
 sampled partial-mask states. Each draw performs two teacher forwards: one with
@@ -110,12 +110,12 @@ The default selector applies a per-example Otsu threshold and then lowers that
 threshold toward the minimum score by `otsu_relax=0.5`. It also removes answer
 words whose content fragments merely repeat words already visible in the
 question (`drop_question_overlap=true`). The result is
-\(\widehat{\mathcal A}\), the positions eligible for forgetting.
+$\widehat{\mathcal A}$, the positions eligible for forgetting.
 
 Alternative selection rules are available through Hydra overrides:
 
 - `select_method=topk` selects `topk_frac` of the answer positions;
-- `select_method=tau` selects positions with \(s_i\ge\tau\); and
+- `select_method=tau` selects positions with $s_i\ge\tau$; and
 - a data batch may provide an explicit `answer_mask`, bypassing PCSS.
 
 Implementation:
@@ -128,11 +128,11 @@ Implementation:
 The default `mask_mode=cover` creates `loss_mc=4` masks per training batch. For
 each example and draw it:
 
-1. samples a diffusion time \(t\) and derives the ordinary MDLM answer mask rate
-   \(\rho(t)=1-\operatorname{scheduler}(t)\);
-2. computes a mask budget from \(\rho(t)\) and the answer length;
+1. samples a diffusion time $t$ and derives the ordinary MDLM answer mask rate
+   $\rho(t)=1-\operatorname{scheduler}(t)$;
+2. computes a mask budget from $\rho(t)$ and the answer length;
 3. assigns `retain_frac=0.5` of that budget to positions outside
-   \(\widehat{\mathcal A}\) and the remaining share to selected forget
+   $\widehat{\mathcal A}$ and the remaining share to selected forget
    positions;
 4. guarantees at least one selected forget position when the selected set is
    nonempty; and
@@ -154,66 +154,66 @@ and forces at least one selected position into a draw.
 At every position, the student distribution is converted into a continuous
 soft predicted embedding:
 
-\[
+$$
 \widehat e_i=\sum_{v\in\mathcal V}p_\theta(v\mid x,y_{\mathcal M})E_v.
-\]
+$$
 
-The unembedding matrix \(E\) is detached, so the model cannot reduce the loss by
+The unembedding matrix $E$ is detached, so the model cannot reduce the loss by
 moving the embedding geometry itself; gradients flow through the student's
 probability distribution. Under DeepSpeed ZeRO-3, the sharded matrix is
 gathered once per batch and reused across all mask draws.
 
 The forget center is selected by `centre_mode`:
 
-- **`gold` (default):** \(c_i=E_{y_i}\). If `ball_k>0` is set by a raw Hydra
+- **`gold` (default):** $c_i=E_{y_i}$. If `ball_k>0` is set by a raw Hydra
   override, the center is instead the mean of the gold embedding's `ball_k`
   cosine-nearest vocabulary embeddings.
-- **`ref_soft`:** \(c_i\) is the frozen teacher's soft embedding on the same
+- **`ref_soft`:** $c_i$ is the frozen teacher's soft embedding on the same
   noised, question-conditioned state.
 
 The promptless anchor is the frozen teacher's soft embedding when the question
 portion of that noised state is replaced by mask tokens:
 
-\[
+$$
 a_i=\sum_{v\in\mathcal V}
  p_{\theta_0}(v\mid x_\varnothing,y_{\mathcal M})E_v.
-\]
+$$
 
-For each selected masked position \(i\in F\), SBRU-TSD minimizes
+For each selected masked position $i\in F$, SBRU-TSD minimizes
 
-\[
+$$
 \ell_{f,i}=k_{\mathrm{rep}}(\widehat e_i,c_i)
 -\gamma_{\mathrm{anc}}k_{\sigma_{\mathrm{anc}}}(\widehat e_i,a_i).
-\]
+$$
 
 The positive first term is minimized by moving away from the forget center. When
 `gamma_anc > 0`, the negative second term is minimized by moving toward the
 promptless teacher anchor. Both kernels are bounded, so
-\(\ell_{f,i}\in[-\gamma_{\mathrm{anc}},1]\), and their gradients decay away
+$\ell_{f,i}\in[-\gamma_{\mathrm{anc}},1]$, and their gradients decay away
 from the corresponding kernel regions rather than driving an unbounded
 negative-log-likelihood ascent. With this wrapper's default `GAMMA_ANC=0`, the
-second term contributes nothing and \(\ell_{f,i}=k_{\mathrm{rep}}\in[0,1]\).
+second term contributes nothing and $\ell_{f,i}=k_{\mathrm{rep}}\in[0,1]$.
 
 With a fixed bandwidth, the kernel is
 
-\[
+$$
 k_\sigma(u,v)=\exp\left(-\frac{\lVert u-v\rVert^2}{2\sigma^2}\right).
-\]
+$$
 
 The launcher's default `SIGMA=median` instead uses the SVGD median heuristic at
 every draw:
 
-\[
+$$
 h=\frac{\operatorname{median}_{i<j}
  \lVert\widehat e_i-\widehat e_j\rVert^2}{\log n},
 \qquad
 k_{\mathrm{rep}}(u,v)=\exp\left(-\frac{\lVert u-v\rVert^2}{h}\right),
-\]
+$$
 
-where \(n\) is the number of selected-position soft embeddings in the current
+where $n$ is the number of selected-position soft embeddings in the current
 batch. If fewer than two points exist or all pairwise distances are zero, the
 code falls back to `SIGMA_FALLBACK=0.05`, represented as
-\(h=2\sigma_{\mathrm{fallback}}^2\). The anchor always uses the fixed
+$h=2\sigma_{\mathrm{fallback}}^2$. The anchor always uses the fixed
 `SIGMA_ANC=1.0` bandwidth.
 
 Implementation:
@@ -223,27 +223,27 @@ and
 
 ### 2.5 Retain-free self-distillation
 
-At the other masked answer positions \(i\in R\), the student matches the
+At the other masked answer positions $i\in R$, the student matches the
 question-conditioned frozen teacher:
 
-\[
+$$
 \ell_{d,i}=D_{\mathrm{KL}}\left(
  p_{\theta_0}(\cdot\mid x,y_{\mathcal M})
  \;\|\;
  p_\theta(\cdot\mid x,y_{\mathcal M})
 \right).
-\]
+$$
 
-For an example with at least one position in \(R\), the losses are combined as
+For an example with at least one position in $R$, the losses are combined as
 
-\[
+$$
 \mathcal L_{\mathrm{ex}}
 =\alpha\operatorname{mean}_{i\in F}\ell_{f,i}
 +(1-\alpha)\operatorname{mean}_{i\in R}\ell_{d,i}.
-\]
+$$
 
-If a draw has no positions in \(R\), the implementation uses only the mean
-forget loss instead of scaling it by \(\alpha\). An example with an empty
+If a draw has no positions in $R$, the implementation uses only the mean
+forget loss instead of scaling it by $\alpha$. An example with an empty
 selected set contributes zero. The default `alpha=0.5` gives equal coefficient
 to forgetting and self-distillation when both are present.
 
@@ -704,8 +704,8 @@ Useful training metrics include:
 ## 7. Tuning guidance
 
 - **`ALPHA`** controls the central trade-off. Lower values strengthen
-  self-distillation when \(R\) is present; higher values emphasize semantic
-  repulsion. It has no scaling effect on draws with an empty \(R\), where the
+  self-distillation when $R$ is present; higher values emphasize semantic
+  repulsion. It has no scaling effect on draws with an empty $R$, where the
   implementation deliberately uses the forget loss alone.
 - **`SIGMA=median`** adapts to current selected-position embedding distances and
   is the wrapper default. A fixed positive value makes runs easier to compare

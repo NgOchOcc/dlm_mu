@@ -150,6 +150,7 @@ method_setup() {
         DiffusionAURA)      EXP=unlearn/tofu/dlm_aura ;;
         DiffusionTSD)       EXP=unlearn/tofu/dlm_tsd ;;
         DiffusionSimpleTSD) EXP=unlearn/tofu/dlm_simple_tsd ;;
+        DiffusionSemanticUnlearn) EXP=unlearn/tofu/dlm_semantic_unlearn ;;
         DiffusionSimpleTSDQMask) EXP=unlearn/tofu/dlm_simple_tsd ;;
         DiffusionUTSD)      EXP=unlearn/tofu/dlm_simple_tsd ;;
         DiffusionCSD)       EXP=unlearn/tofu/dlm_simple_tsd ;;
