@@ -5,6 +5,8 @@ handler: DiffusionSemanticUnlearn
 method_args:
   # Strength of semantic-neighbourhood suppression; eta=0 distils the teacher unchanged.
   eta: 1.0
+  # Target score: rbf | cosine. Cosine uses cos(E_v, E_center) - 1.
+  target_mode: rbf
   # Fixed RBF sigma used only if a vocabulary-wide median bandwidth degenerates.
   sigma_fallback: 0.05
   # Memory controls; neither changes the exact vocabulary-wide target.

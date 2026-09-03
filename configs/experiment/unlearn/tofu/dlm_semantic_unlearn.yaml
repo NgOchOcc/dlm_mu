@@ -1,8 +1,8 @@
 # @package _global_
 # Forget-only Semantic_Unlearn for masked-diffusion LMs on TOFU.
-# The frozen teacher target is semantically tilted away from each masked gold
-# token's frozen input-embedding neighbourhood. There is no retain dataset,
-# retain loss, or ordinary denoising cross-entropy term.
+# The frozen teacher target is tilted with the configured RBF or shifted-cosine
+# score around each masked gold token. There is no retain dataset, retain loss,
+# or ordinary denoising cross-entropy term.
 defaults:
   - override /model: LLaDA-8B-Instruct
   - override /trainer: DiffusionSemanticUnlearn

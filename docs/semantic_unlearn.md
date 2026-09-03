@@ -1,39 +1,73 @@
 # Semantic_Unlearn for Masked Diffusion Language Models
 
-## 1. Overview
+Semantic_Unlearn is a forget-only objective for masked discrete diffusion
+language models (DLLMs). It freezes the original model as a teacher
+$p_{\theta_0}$, constructs a semantic target distribution at masked forget-answer
+positions, and trains a student $p_\theta$ to match that target.
 
-**Semantic_Unlearn** is a forget-only unlearning objective for masked discrete diffusion language models (DLLMs). It starts from an original model, freezes a copy as the teacher $p_{\theta_0}$, and updates a student $p_\theta$ on normal diffusion states sampled from the forget answers.
+This document separates the mathematical definition from the code and runtime
+details:
 
-For every masked answer position, the method constructs a valid vocabulary distribution from the frozen teacher and exponentially downweights tokens whose frozen token embeddings are close to the forgotten gold token. The student then minimizes forward KL from this semantic target:
+- [Part I: Theory](#part-i-theory) defines the target distributions and loss.
+- [Part II: Implementation](#part-ii-implementation) explains configuration,
+  numerical details, and TOFU usage.
+
+The method uses only the forget dataset. It has no retain loss, ordinary
+denoising cross-entropy term, or separate retain examples.
+
+---
+
+# Part I: Theory
+
+## 1. Motivation
+
+Exact-token suppression can move probability to a synonym, spelling variant, or
+another token in the same semantic region. Semantic_Unlearn instead changes the
+teacher distribution according to the frozen input-embedding relationship
+between each vocabulary token and the forgotten gold token.
+
+Unlike unbounded gradient ascent, the method supplies a finite, normalized
+replacement distribution. Because the target is evaluated on randomly noised
+answer sequences, the objective covers the diffusion states encountered during
+normal DLLM denoising.
+
+## 2. Supported target distributions
+
+For a masked answer position $i$, let
+
+$$
+p_i^0(v)=p_{\theta_0}(v\mid x_f,y_t),
+\qquad
+c_i=E_{y_{f,i}},
+$$
+
+where $E$ is the frozen teacher input-embedding matrix. Every mode uses
 
 $$
 q_i^*(v)
-\propto
-p_{\theta_0}(v\mid x_f,y_t)
-\exp\!\left[-\eta k_i(v)\right].
+=
+\frac{1}{Z_i}p_i^0(v)\exp[-\eta s_i(v)],
+\qquad
+Z_i=\sum_{v'\in\mathcal V}p_i^0(v')\exp[-\eta s_i(v')].
 $$
 
-Unlike exact-token deletion, this target suppresses the local semantic neighborhood around the forgotten answer token. Unlike gradient ascent, it remains a normalized distribution and gives the student an explicit replacement target. The method uses only the forget dataset: it has no retain loss, no standard denoising cross-entropy term, and no separate retain examples.
+The supported choices for $s_i(v)$ are:
 
-The implementation is in [`src/trainer/dlm/unlearn/semantic_unlearn.py`](../src/trainer/dlm/unlearn/semantic_unlearn.py). The default trainer and TOFU experiment configurations are [`configs/trainer/DiffusionSemanticUnlearn.yaml`](../configs/trainer/DiffusionSemanticUnlearn.yaml) and [`configs/experiment/unlearn/tofu/dlm_semantic_unlearn.yaml`](../configs/experiment/unlearn/tofu/dlm_semantic_unlearn.yaml).
+| `target_mode` | Semantic score $s_i(v)$ | Target distribution | Interpretation |
+|---|---|---|---|
+| `rbf` (default) | $\displaystyle k_i(v)=\exp\!\left(-\frac{\lVert E_v-c_i\rVert_2^2}{h_i}\right)$ | $\displaystyle q_i^*(v)=\frac{1}{Z_i}p_i^0(v)\exp[-\eta k_i(v)]$ | Downweights tokens inside the RBF neighborhood of the gold token. |
+| `cosine` | $\displaystyle \cos(E_v,c_i)-1$ | $\displaystyle q_i^*(v)=\frac{1}{Z_i}p_i^0(v)\exp\{-\eta[\cos(E_v,c_i)-1]\}$ | Downweights higher-cosine tokens relative to lower-cosine tokens, without an RBF bandwidth. |
 
----
+The `cosine` formula is implemented exactly as shown. Its constant `-1` adds the
+same $+\eta$ to every unnormalized log weight, so it cancels in $Z_i$. Therefore
+the normalized distribution is equivalently
 
-## 2. Motivation
+$$
+q_i^*(v)\propto p_i^0(v)\exp[-\eta\cos(E_v,c_i)].
+$$
 
-### 2.1 Exact-token suppression can move probability to a synonym
-
-Suppressing only the gold token does not necessarily remove the underlying fact. Probability can move to a synonym, spelling variant, or another token in the same semantic region. Semantic_Unlearn defines that region through the original model's frozen input-token embedding geometry.
-
-### 2.2 Unbounded ascent does not define replacement behavior
-
-Maximizing the forgotten answer's negative log-likelihood can continue without a finite target. Semantic_Unlearn instead edits the original teacher distribution and renormalizes it. Training is therefore a bounded forward-KL fit to a well-defined probability distribution.
-
-### 2.3 DLLM associations exist across diffusion states
-
-A masked DLLM denoises partially masked sequences. Semantic_Unlearn samples a random diffusion time and applies its objective to the masked answer positions in that state, exposing the student to the same family of states used by ordinary DLLM training.
-
----
+Keeping the shifted form in the definition makes the self-score zero because
+$\cos(c_i,c_i)-1=0$.
 
 ## 3. Notation
 
@@ -43,250 +77,200 @@ A masked DLLM denoises partially masked sequences. Semantic_Unlearn samples a ra
 | $t$ | Random diffusion time sampled from the trainer's normal interval. |
 | $\mathcal M_t$ | Answer-token positions masked at time $t$. |
 | $y_t$ | Partially masked sequence obtained from $y_f$ at time $t$. |
-| $\theta_0$ | Frozen original model used as the teacher and embedding source. |
+| $\theta_0$ | Frozen original model used as teacher and embedding source. |
 | $\theta$ | Trainable student initialized from the original model. |
 | $\mathcal V$ | Tokenizer vocabulary; padded LM-head-only rows are excluded. |
-| $E_v$ | Frozen input-token embedding of vocabulary token $v$ from $\theta_0$. |
-| $c_i=E_{y_{f,i}}$ | Semantic center at answer position $i$. |
-| $d_i(v)^2$ | Squared Euclidean distance $\lVert E_v-c_i\rVert_2^2$. |
-| $h_i$ | Per-center median-heuristic RBF bandwidth. |
-| $k_i(v)$ | RBF similarity between vocabulary token $v$ and center $c_i$. |
-| $\eta$ | Nonnegative semantic suppression strength. |
-| $q_i^*$ | Normalized semantic target at masked position $i$. |
+| $E_v$ | Frozen input embedding of vocabulary token $v$. |
+| $c_i=E_{y_{f,i}}$ | Semantic center at masked answer position $i$. |
+| $s_i(v)$ | Mode-specific semantic score from the table above. |
+| $\eta$ | Nonnegative target-tilt strength. |
+| $q_i^*$ | Normalized target distribution at position $i$. |
 
----
+## 4. Target construction
 
-## 4. Method
+### 4.1 Shared diffusion state
 
-### 4.1 Sample a normal DLLM noising state
-
-For each forget example $(x_f,y_f)$, sample
+For each forget example, sample
 
 $$
 t\sim\mathcal U(\epsilon,1),
 $$
 
-convert $t$ to a masking probability through the configured diffusion scheduler, and independently mask answer positions to form $y_t$. Prompt tokens remain visible. The student and frozen teacher are evaluated on the **same** $y_t$ and attention mask.
+convert $t$ to a mask probability with the configured diffusion scheduler, and
+mask answer positions to obtain $y_t$. Prompt tokens remain visible. The student
+and frozen teacher receive the same $y_t$ and attention mask.
 
-The implementation reuses [`DiffusionFinetuneTrainer._sample_and_denoise`](../src/trainer/dlm/base.py), including LLaDA/Dream preprocessing and right-shift handling.
+### 4.2 Frozen semantic center
 
-### 4.2 Define a frozen semantic center
-
-At every masked answer position $i\in\mathcal M_t$, use the clean gold token id retained by the batch and set
+At each $i\in\mathcal M_t$, the clean gold token defines
 
 $$
 c_i=E_{y_{f,i}}.
 $$
 
-$E$ is the original model's frozen input-embedding matrix, restricted to the tokenizer vocabulary. The geometry is detached from autograd, so the target cannot be optimized by moving the embedding matrix.
+The embedding matrix is taken from the frozen teacher and detached from
+autograd, so the target cannot change by moving its geometry.
 
-### 4.3 Compute the per-center median bandwidth
+### 4.3 RBF score
 
-For one center $c_i$, compute its squared distance to every eligible vocabulary embedding:
+The RBF mode computes
 
 $$
 d_i(v)^2=\lVert E_v-c_i\rVert_2^2,
-\qquad v\in\mathcal V.
-$$
-
-Semantic_Unlearn follows the repository's SVGD-style median heuristic. Let
-
-$$
+\qquad
 m_i^2=\operatorname{median}_{v\in\mathcal V}d_i(v)^2,
 \qquad
-h_i=\frac{m_i^2}{\log |\mathcal V|}.
+h_i=\frac{m_i^2}{\log|\mathcal V|},
 $$
 
-The RBF kernel is
+then uses
 
 $$
-k_i(v)=\exp\!\left(-\frac{d_i(v)^2}{h_i}\right).
+s_i(v)=k_i(v)=\exp\!\left(-\frac{d_i(v)^2}{h_i}\right).
 $$
 
-Thus $k_i(y_{f,i})=1$, nearby tokens receive values near one, and distant tokens approach zero. If the median degenerates to zero or is non-finite, the implementation falls back to
+If $h_i$ is zero or non-finite, it falls back to
+$2\sigma_{\mathrm{fallback}}^2$. The median is exact over the tokenizer
+vocabulary.
+
+### 4.4 Shifted-cosine score
+
+The cosine mode normalizes both embedding vectors and uses
 
 $$
-h_i=2\sigma_{\mathrm{fallback}}^2.
-$$
-
-The median is exact over the full tokenizer vocabulary for each distinct center token in the batch. Vocabulary computations are chunked and repeated gold-token centers are deduplicated to control memory without changing the result.
-
-### 4.4 Construct the semantic target
-
-Let
-
-$$
-p_i^0(v)=p_{\theta_0}(v\mid x_f,y_t)
-$$
-
-be the frozen teacher distribution at masked position $i$. Define the unnormalized target
-
-$$
-\widetilde q_i(v)
+s_i(v)
 =
-p_i^0(v)\exp[-\eta k_i(v)]
+\frac{E_v^\top c_i}{\lVert E_v\rVert_2\lVert c_i\rVert_2}-1.
 $$
 
-and partition function
+This score lies in $[-2,0]$ up to numerical precision. It needs no bandwidth or
+fallback scale.
 
-$$
-Z_i
-=
-\sum_{v'\in\mathcal V}
-p_i^0(v')\exp[-\eta k_i(v')].
-$$
+### 4.5 Normalization and loss
 
-The target is
-
-$$
-q_i^*(v)
-=
-\frac{1}{Z_i}
-p_i^0(v)\exp[-\eta k_i(v)].
-$$
-
-The implementation evaluates this in log space:
+The implementation constructs the target in log space:
 
 $$
 \log q_i^*(v)
 =
-\log p_i^0(v)-\eta k_i(v)
+\log p_i^0(v)-\eta s_i(v)
 -
 \operatorname{logsumexp}_{v'}
-\left[\log p_i^0(v')-\eta k_i(v')\right].
+\left[\log p_i^0(v')-\eta s_i(v')\right].
 $$
 
-This preserves the teacher's support and ordering away from the semantic neighborhood while reducing the odds of high-kernel tokens relative to distant tokens. In particular, $\eta=0$ recovers $q_i^*=p_i^0$. Both $q_i^*$ and $\log q_i^*$ are detached before the student loss is computed.
-
-### 4.5 Optimize forward KL on masked answer positions
-
-For one example and noising state, the loss is exactly
+When $\eta=0$, both modes recover the teacher distribution. The target and its
+log probabilities are detached before evaluating the forward KL objective:
 
 $$
 \mathcal L_{\mathrm{Semantic\_Unlearn}}
 =
 \frac{1}{|\mathcal M_t|}
 \sum_{i\in\mathcal M_t}
-D_{\mathrm{KL}}
-\left(
-q_i^*
-\;\|\;
-p_\theta(\cdot\mid x_f,y_t)_i
-\right),
+D_{\mathrm{KL}}\!\left(q_i^*\,\|\,p_\theta(\cdot\mid x_f,y_t)_i\right).
 $$
 
-where
-
-$$
-D_{\mathrm{KL}}(q_i^*\|p_i^\theta)
-=
-\sum_{v\in\mathcal V}
-q_i^*(v)
-\left[
-\log q_i^*(v)-\log p_i^\theta(v)
-\right].
-$$
-
-The training objective is the expectation over forget examples and sampled diffusion times. Per-example masked-position means are averaged across active examples. A rare sample with no masked answer token contributes no loss; an all-empty batch returns a differentiable zero.
-
-The explicit $1/|\mathcal M_t|$ definition means scheduler/CART token weights are not applied to this KL, although the configured scheduler still determines the noising state.
+Per-example masked-position means are averaged across active examples. A sample
+with no masked answer token contributes no loss. Scheduler/CART token weights
+are not applied to this KL, although the scheduler still determines $y_t$.
 
 ---
 
-## 5. Pseudocode
+# Part II: Implementation
 
-```text
-Input:
-    forget batch (x_f, y_f)
-    trainable student p_theta
-    frozen teacher p_theta0
-    frozen teacher input embeddings E
-    suppression strength eta
+## 5. Selecting a target mode
 
-Sample one random diffusion time per example
-Mask answer tokens to obtain y_t and masked set M_t
-Run the student on (x_f, y_t)
-Run the frozen teacher on the identical (x_f, y_t)
+The trainer arguments live in
+[`configs/trainer/DiffusionSemanticUnlearn.yaml`](../configs/trainer/DiffusionSemanticUnlearn.yaml):
 
-For every distinct gold token g appearing in M_t:
-    c = E[g]
-    d2[v] = ||E[v] - c||^2 for every tokenizer token v
-    h = median_v(d2[v]) / log(|V|)
-    if h is zero or non-finite:
-        h = 2 * sigma_fallback^2
-    kernel[v] = exp(-d2[v] / h)
+| Argument | Default | Applies to | Purpose |
+|---|---:|---|---|
+| `target_mode` | `rbf` | Both | Selects `rbf` or `cosine`. |
+| `eta` | `1.0` | Both | Strength of the target tilt; `0` distills the unchanged teacher. |
+| `sigma_fallback` | `0.05` | RBF only | Fixed scale used when a median bandwidth degenerates. |
+| `center_chunk_size` | `8` | Both | Distinct gold-token centers processed together. |
+| `vocab_chunk_size` | `4096` | Both | Vocabulary embedding rows converted to float32 together. |
 
-    For each masked position i whose gold token is g:
-        log_q_unnorm[v] = log p_theta0(v | x_f, y_t)_i
-                            - eta * kernel[v]
-        log_q[v] = log_q_unnorm[v] - logsumexp(log_q_unnorm)
-        q[v] = exp(log_q[v])
-        kl[i] = sum_v q[v] * (log_q[v] - log p_theta[v])
+Hydra overrides can select the new mode directly:
 
-For each active example:
-    average kl[i] over i in M_t
-Average the example losses
-Update only theta
+```bash
+python src/train.py --config-name=unlearn.yaml \
+  experiment=unlearn/tofu/dlm_semantic_unlearn \
+  trainer.method_args.target_mode=cosine
 ```
 
----
+An unsupported value fails during trainer initialization with a `ValueError`.
 
-## 6. Numerical and distributed-training details
+## 6. Execution flow
 
-- **Tokenizer support:** teacher, target, and student distributions are normalized over `len(tokenizer)`, not the wider padded LM head used by LLaDA and Dream.
-- **Float32 target math:** log-softmax, distances, bandwidths, kernels, normalization, and KL accumulation use float32 even when the model runs in bfloat16.
-- **Stable distances:** squared distances are computed as $\lVert E_v\rVert^2+\lVert c\rVert^2-2E_v^\top c$ and clamped at zero to remove roundoff negatives.
-- **Memory bound:** the code never materializes a tensor shaped `[masked_positions, vocabulary, hidden_size]`. It chunks the vocabulary matrix during distance computation and chunks distinct center tokens during target construction.
-- **Repeated centers:** masked positions with the same gold token reuse one kernel and bandwidth in the current batch.
-- **ZeRO-3:** the frozen teacher's sharded input embedding is materialized with `deepspeed.zero.GatheredParameters` and cloned inside the gather context.
-- **Fixed target:** all teacher and semantic-target operations run under `torch.no_grad()`; gradients flow only through the student log-probabilities.
-- **Shared state:** teacher and student always receive the same noised token ids, preventing target differences caused by independent masking draws.
+```text
+Input: forget batch, student, frozen teacher, frozen teacher embeddings E
 
----
+1. Sample one diffusion time per example and construct y_t.
+2. Run student and teacher on the same y_t.
+3. Deduplicate gold-token centers among masked answer positions.
+4. For each center chunk:
+   a. RBF mode: compute full-vocabulary distances, bandwidth, and RBF scores.
+   b. Cosine mode: normalize embeddings and compute shifted-cosine scores.
+5. Form log q = log p_theta0 - eta * score and normalize with logsumexp.
+6. Compute KL(q || p_theta) at masked answer positions.
+7. Average within each active example, then across examples; update only theta.
+```
 
-## 7. Configuration
+The code reuses
+[`DiffusionFinetuneTrainer._sample_and_denoise`](../src/trainer/dlm/base.py),
+including LLaDA/Dream preprocessing and right-shift behavior.
 
-The main method arguments are:
+## 7. Numerical and distributed behavior
 
-| Argument | Default | Purpose |
-|---|---:|---|
-| `eta` | `1.0` | Strength of semantic downweighting. `0` leaves the teacher target unchanged. |
-| `sigma_fallback` | `0.05` | Fixed RBF scale used only when a per-center median bandwidth degenerates. |
-| `center_chunk_size` | `8` | Number of distinct gold-token centers processed together. |
-| `vocab_chunk_size` | `4096` | Vocabulary rows converted to float32 together during distance computation. |
-
-The TOFU experiment is retain-free: [`dlm_semantic_unlearn.yaml`](../configs/experiment/unlearn/tofu/dlm_semantic_unlearn.yaml) removes `data.retain` entirely.
-
----
+- Teacher, target, and student distributions are restricted to
+  `len(tokenizer)`, excluding padded LM-head-only rows.
+- Log-softmax, semantic-score construction, normalization, and KL accumulation
+  use float32 even when the model uses bfloat16.
+- Cosines are clamped to $[-1,1]$ after the normalized matrix product to remove
+  floating-point overshoot.
+- RBF squared distances are clamped at zero to remove roundoff negatives.
+- Vocabulary and center chunking avoid a
+  `[masked_positions, vocabulary, hidden_size]` tensor without approximating the
+  target.
+- Repeated gold-token centers reuse one score vector within a batch.
+- Under ZeRO-3, the frozen input embedding is materialized with
+  `deepspeed.zero.GatheredParameters`.
+- Teacher and target operations run under `torch.no_grad()`; gradients flow only
+  through student log probabilities.
 
 ## 8. Running on TOFU
 
-Use the method-specific launcher:
+RBF remains the launcher default:
 
 ```bash
 bash scripts/dlm/tofu/run_semantic_unlearn.sh
 ```
 
-Override the semantic strength or chunk sizes with environment variables:
+Select the shifted-cosine target with:
 
 ```bash
-ETA=2.0 CENTER_CHUNK_SIZE=4 VOCAB_CHUNK_SIZE=2048 \
+TARGET_MODE=cosine ETA=2.0 \
   bash scripts/dlm/tofu/run_semantic_unlearn.sh
 ```
 
-The launcher delegates to [`scripts/dlm/tofu/unlearn.sh`](../scripts/dlm/tofu/unlearn.sh), so normal controls such as `UNLEARN_EPOCHS`, `TRAIN_BS`, `GRAD_ACCUM`, `NO_EVAL`, and `TASK_SUFFIX` remain available.
+The launcher passes extra arguments to
+[`scripts/dlm/tofu/unlearn.sh`](../scripts/dlm/tofu/unlearn.sh), so controls such
+as `UNLEARN_EPOCHS`, `TRAIN_BS`, `GRAD_ACCUM`, `NO_EVAL`, and `TASK_SUFFIX`
+remain available. The existing RBF suffix is preserved; the cosine default adds
+`_cosine_` to keep the two modes' runs distinct.
 
----
+The TOFU experiment configuration is
+[`configs/experiment/unlearn/tofu/dlm_semantic_unlearn.yaml`](../configs/experiment/unlearn/tofu/dlm_semantic_unlearn.yaml).
+It removes `data.retain` entirely.
 
-## 9. Implementation map
+## 9. Source map
 
-| Component | File |
+| Responsibility | File |
 |---|---|
-| Algorithm and target construction | [`src/trainer/dlm/unlearn/semantic_unlearn.py`](../src/trainer/dlm/unlearn/semantic_unlearn.py) |
+| Target scores, normalization, and loss | [`src/trainer/dlm/unlearn/semantic_unlearn.py`](../src/trainer/dlm/unlearn/semantic_unlearn.py) |
 | DLLM noising and Dream/LLaDA handling | [`src/trainer/dlm/base.py`](../src/trainer/dlm/base.py) |
-| Frozen teacher and shared reduction | [`src/trainer/dlm/unlearn/base.py`](../src/trainer/dlm/unlearn/base.py) |
-| Package export | [`src/trainer/dlm/unlearn/__init__.py`](../src/trainer/dlm/unlearn/__init__.py) |
-| Trainer registry | [`src/trainer/__init__.py`](../src/trainer/__init__.py) |
+| Frozen teacher and reduction | [`src/trainer/dlm/unlearn/base.py`](../src/trainer/dlm/unlearn/base.py) |
 | Trainer defaults | [`configs/trainer/DiffusionSemanticUnlearn.yaml`](../configs/trainer/DiffusionSemanticUnlearn.yaml) |
 | TOFU experiment | [`configs/experiment/unlearn/tofu/dlm_semantic_unlearn.yaml`](../configs/experiment/unlearn/tofu/dlm_semantic_unlearn.yaml) |
 | TOFU launcher | [`scripts/dlm/tofu/run_semantic_unlearn.sh`](../scripts/dlm/tofu/run_semantic_unlearn.sh) |

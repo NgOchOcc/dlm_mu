@@ -1,16 +1,17 @@
 # SBRU-TSD TOFU unlearning workflow
 
-This document explains what
-[`scripts/dlm/tofu/run_sbrutsd.sh`](../scripts/dlm/tofu/run_sbrutsd.sh)
-does, the unlearning problem it addresses, and the SBRU-TSD method that it
-launches.
+This document explains the SBRU-TSD objective and the TOFU workflow that runs
+it. The material is split so the method can be understood without first reading
+launcher and infrastructure details:
 
-> **Scope:** `run_sbrutsd.sh` is a launcher, not the implementation of the
-> learning algorithm. It selects defaults and Hydra overrides, starts the common
-> TOFU unlearning/evaluation pipeline, redirects its output to a log, and exits.
-> The method itself is implemented by
-> [`DiffusionSBRUTSD`](../src/trainer/dlm/unlearn/sbru_tsd.py), which subclasses
-> [`DiffusionSimpleTSD`](../src/trainer/dlm/unlearn/simple_tsd.py).
+- [Part I: Theory](#part-i-theory) defines the problem, objectives, and
+  algorithm.
+- [Part II: Implementation](#part-ii-implementation) covers the launcher,
+  execution flow, configuration, operations, and source locations.
+
+---
+
+# Part I: Theory
 
 ## 1. Problem being solved
 
@@ -297,6 +298,21 @@ For each forget-set minibatch:
 
 After unlearning, save the final model and run the TOFU DLM evaluation suite.
 ```
+
+---
+
+# Part II: Implementation
+
+This part explains what
+[`scripts/dlm/tofu/run_sbrutsd.sh`](../scripts/dlm/tofu/run_sbrutsd.sh)
+does and how it reaches the SBRU-TSD implementation.
+
+> **Scope:** `run_sbrutsd.sh` is a launcher, not the implementation of the
+> learning algorithm. It selects defaults and Hydra overrides, starts the common
+> TOFU unlearning/evaluation pipeline, redirects its output to a log, and exits.
+> The method itself is implemented by
+> [`DiffusionSBRUTSD`](../src/trainer/dlm/unlearn/sbru_tsd.py), which subclasses
+> [`DiffusionSimpleTSD`](../src/trainer/dlm/unlearn/simple_tsd.py).
 
 ## 3. What `run_sbrutsd.sh` does
 
@@ -794,5 +810,5 @@ utility together, not from training loss alone.
 | Hydra training entry point | [`src/train.py`](../src/train.py) |
 | Trainer registry | [`src/trainer/__init__.py`](../src/trainer/__init__.py) |
 | TOFU DLM evaluation configuration | [`configs/eval/tofu_dlm.yaml`](../configs/eval/tofu_dlm.yaml) |
-| Related detailed SimpleTSD documentation | [`docs/simple_tsd_algorithms.md`](simple_tsd_algorithms.md) |
+| Related detailed SimpleTSD documentation | [`docs/simple_tsd.md`](simple_tsd.md) |
 | Evidence/commentary for the earlier SBRU anchor sweep | [`scripts/dlm/tofu/run_sbru_anc_sweep.sh`](../scripts/dlm/tofu/run_sbru_anc_sweep.sh) |

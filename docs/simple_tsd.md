@@ -1,5 +1,17 @@
 # Simple Token Selection and Trajectory-Selective Distillation
 
+This document separates the mathematical method from its configuration and
+source-code details:
+
+- [Part I: Theory](#part-i-theory) explains the motivation, token selection,
+  target construction, and training objective.
+- [Part II: Implementation](#part-ii-implementation) covers shipped defaults,
+  implementation differences, variants, and source locations.
+
+---
+
+# Part I: Theory
+
 ## 1. Overview
 
 **Simple Trajectory-Selective Distillation (SimpleTSD)** is a retain-set-free unlearning method for masked discrete diffusion language models (DLLMs).
@@ -13,8 +25,6 @@ SimpleTSD therefore separates an answer into two kinds of positions:
 
 - **forget positions**, which carry prompt-specific information that should be removed; and
 - **self-distillation positions**, which preserve grammar, fluency, and non-sensitive content.
-
-The implementation is in [`src/trainer/dlm/unlearn/simple_tsd.py`](../src/trainer/dlm/unlearn/simple_tsd.py), and its default configuration is in [`configs/trainer/DiffusionSimpleTSD.yaml`](../configs/trainer/DiffusionSimpleTSD.yaml).
 
 ---
 
@@ -392,6 +402,13 @@ This makes the method more targeted than whole-answer gradient ascent and allows
 
 ---
 
+# Part II: Implementation
+
+The implementation is in
+[`src/trainer/dlm/unlearn/simple_tsd.py`](../src/trainer/dlm/unlearn/simple_tsd.py),
+and its default configuration is in
+[`configs/trainer/DiffusionSimpleTSD.yaml`](../configs/trainer/DiffusionSimpleTSD.yaml).
+
 ## 8. Current configuration
 
 The shipped defaults are defined in [`configs/trainer/DiffusionSimpleTSD.yaml`](../configs/trainer/DiffusionSimpleTSD.yaml).
@@ -420,7 +437,8 @@ The TOFU experiment wiring is in [`configs/experiment/unlearn/tofu/dlm_simple_ts
 
 ## 9. Simplified specification versus current implementation
 
-The original LaTeX specification in [`simple_tsd_algorithms.tex`](simple_tsd_algorithms.tex) presents the core method in a deliberately simplified form:
+The original simplified specification (not included in this checkout) presents
+the core method in a deliberately simplified form:
 
 - it scores tokens using one fully masked answer;
 - it uses a fixed threshold $\tau$;
@@ -461,4 +479,3 @@ This document describes the **current implementation** while retaining the mathe
 | Shared DLLM trainer | [`src/trainer/dlm/base.py`](../src/trainer/dlm/base.py) |
 | Shared DLLM unlearning utilities | [`src/trainer/dlm/unlearn/base.py`](../src/trainer/dlm/unlearn/base.py) |
 | Primary launch wrapper | [`scripts/dlm/tofu/simple_tsd.sh`](../scripts/dlm/tofu/simple_tsd.sh) |
-| Smoke test | [`scripts/dlm/tofu/simple_tsd_smoke_test.py`](../scripts/dlm/tofu/simple_tsd_smoke_test.py) |

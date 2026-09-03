@@ -6,7 +6,7 @@ using either an RBF embedding-neighbourhood score or cosine similarity:
     q_rbf*(v) propto p_theta0(v | x_f, y_t) exp(-eta k_i(v)),
     k_i(v) = exp(-||E_v - E_yi||^2 / h_i),
 
-    q_cos*(v) propto p_theta0(v | x_f, y_t) exp(eta (cos(E_v, E_yi) - 1)).
+    q_cos*(v) propto p_theta0(v | x_f, y_t) exp(-eta (cos(E_v, E_yi) - 1)).
 
 The RBF bandwidth ``h_i`` is the median squared distance from the gold-token
 centre to the complete tokenizer vocabulary, divided by ``log(|V|)``. The
@@ -27,6 +27,7 @@ class DiffusionSemanticUnlearn(DiffusionUnlearnTrainer):
     def __init__(
         self,
         eta=1.0,
+        target_mode="rbf",
         sigma_fallback=0.05,
         center_chunk_size=8,
         vocab_chunk_size=4096,
@@ -35,7 +36,12 @@ class DiffusionSemanticUnlearn(DiffusionUnlearnTrainer):
     ):
         # Validate cheap arguments before the Trainer builds the frozen teacher.
         eta = float(eta)
+        target_mode = str(target_mode).lower()
         sigma_fallback = float(sigma_fallback)
+        if target_mode not in {"rbf", "cosine"}:
+            raise ValueError(
+                f"target_mode must be one of ('rbf', 'cosine'), got {target_mode!r}"
+            )
         if isinstance(center_chunk_size, bool) or int(center_chunk_size) != float(
             center_chunk_size
         ):
@@ -67,6 +73,7 @@ class DiffusionSemanticUnlearn(DiffusionUnlearnTrainer):
 
         super().__init__(*args, **kwargs)
         self.eta = eta
+        self.target_mode = target_mode
         self.sigma_fallback = sigma_fallback
         self.center_chunk_size = center_chunk_size
         self.vocab_chunk_size = vocab_chunk_size
@@ -143,9 +150,37 @@ class DiffusionSemanticUnlearn(DiffusionUnlearnTrainer):
         return torch.cat(kernels, dim=0), torch.cat(bandwidths, dim=0)
 
     @torch.no_grad()
-    def _tilted_target(self, log_p0, kernels):
-        """Normalize ``log p0 - eta * kernel`` and detach the resulting target."""
-        log_q = log_p0.float() - self.eta * kernels.float()
+    def _cosine_scores(self, center_ids, E):
+        """Return ``cos(E_v, E_center) - 1`` for each center and token."""
+        if center_ids.ndim != 1:
+            raise ValueError("center_ids must be a one-dimensional tensor")
+        if center_ids.numel() == 0:
+            return E.new_empty((0, self.vocab_size), dtype=torch.float32)
+        if bool(((center_ids < 0) | (center_ids >= self.vocab_size)).any()):
+            raise ValueError("center_ids contains an id outside the tokenizer vocabulary")
+
+        centers = F.normalize(E[center_ids].float(), dim=-1)
+        chunks = []
+        for start in range(0, E.shape[0], self.vocab_chunk_size):
+            rows = F.normalize(
+                E[start : start + self.vocab_chunk_size].float(), dim=-1
+            )
+            cosine = (centers @ rows.T).clamp_(-1.0, 1.0)
+            chunks.append(cosine - 1.0)
+        return torch.cat(chunks, dim=-1)
+
+    @torch.no_grad()
+    def _semantic_scores(self, center_ids, E):
+        """Return the configured vocabulary-wide score for each center token."""
+        if self.target_mode == "cosine":
+            return self._cosine_scores(center_ids, E)
+        kernels, _ = self._semantic_kernels(center_ids, E)
+        return kernels
+
+    @torch.no_grad()
+    def _tilted_target(self, log_p0, semantic_scores):
+        """Normalize ``log p0 - eta * score`` and detach the resulting target."""
+        log_q = log_p0.float() - self.eta * semantic_scores.float()
         log_q = log_q - torch.logsumexp(log_q, dim=-1, keepdim=True)
         q = log_q.exp()
         return log_q.detach(), q.detach()
@@ -160,8 +195,8 @@ class DiffusionSemanticUnlearn(DiffusionUnlearnTrainer):
         if center_ids.shape != log_p0.shape[:1]:
             raise ValueError("center_ids must contain one token id per target position")
         unique_ids, inverse = torch.unique(center_ids, sorted=True, return_inverse=True)
-        kernels, _ = self._semantic_kernels(unique_ids, E)
-        return self._tilted_target(log_p0, kernels[inverse])
+        scores = self._semantic_scores(unique_ids, E)
+        return self._tilted_target(log_p0, scores[inverse])
 
     def _masked_kl(self, student_logits, teacher_logits, center_ids, E):
         """Forward KL for masked positions, processed by distinct-center chunks."""
@@ -175,8 +210,8 @@ class DiffusionSemanticUnlearn(DiffusionUnlearnTrainer):
             stop = min(start + self.center_chunk_size, unique_ids.numel())
             member = (inverse >= start) & (inverse < stop)
             position = member.nonzero(as_tuple=True)[0]
-            kernels, _ = self._semantic_kernels(unique_ids[start:stop], E)
-            position_kernels = kernels[inverse[position] - start]
+            scores = self._semantic_scores(unique_ids[start:stop], E)
+            position_scores = scores[inverse[position] - start]
 
             log_p_theta = F.log_softmax(
                 student_logits[position, : self.vocab_size].float(), dim=-1
@@ -185,7 +220,7 @@ class DiffusionSemanticUnlearn(DiffusionUnlearnTrainer):
                 log_p0 = F.log_softmax(
                     teacher_logits[position, : self.vocab_size].float(), dim=-1
                 )
-                log_q, q = self._tilted_target(log_p0, position_kernels)
+                log_q, q = self._tilted_target(log_p0, position_scores)
             losses.append((q * (log_q - log_p_theta)).sum(-1))
             positions.append(position)
 

@@ -367,7 +367,7 @@ Shared fine-tuning infrastructure is in [`src/trainer/base.py`](../src/trainer/b
 | [`aura.py`](../src/trainer/dlm/unlearn/aura.py) | AURA method. |
 | [`tsd.py`](../src/trainer/dlm/unlearn/tsd.py) | Trajectory-selective distillation. |
 | [`simple_tsd.py`](../src/trainer/dlm/unlearn/simple_tsd.py) | Retain-free SimpleTSD. |
-| [`semantic_unlearn.py`](../src/trainer/dlm/unlearn/semantic_unlearn.py) | Forget-only semantic-target unlearning. |
+| [`semantic_unlearn.py`](../src/trainer/dlm/unlearn/semantic_unlearn.py) | Forget-only semantic-target unlearning with RBF and shifted-cosine targets. |
 | [`simple_tsd_qmask.py`](../src/trainer/dlm/unlearn/simple_tsd_qmask.py) | Promptless-target SimpleTSD variant. |
 | [`uniform_tsd.py`](../src/trainer/dlm/unlearn/uniform_tsd.py) | Uniform TSD variant. |
 | [`concept_subspace.py`](../src/trainer/dlm/unlearn/concept_subspace.py) | Concept-subspace distillation/unlearning. |
@@ -375,7 +375,7 @@ Shared fine-tuning infrastructure is in [`src/trainer/base.py`](../src/trainer/b
 | [`sbru_tsd.py`](../src/trainer/dlm/unlearn/sbru_tsd.py) | SBRU composed with the SimpleTSD pipeline. |
 | [`rollout.py`](../src/trainer/dlm/unlearn/rollout.py) | Shared reverse-trajectory and completion utilities. |
 
-For details about SimpleTSD, see [`docs/simple_tsd_algorithms.md`](simple_tsd_algorithms.md). For the forget-only semantic-target method, see [`docs/semantic_unlearn.md`](semantic_unlearn.md).
+For details about SimpleTSD, see [`docs/simple_tsd_algorithms.md`](simple_tsd_algorithms.md). For Semantic_Unlearn, begin with the target-distribution table and theory in [`docs/semantic_unlearn.md`](semantic_unlearn.md), then continue to its separate implementation section.
 
 ### 5.7 Evaluation layer
 
