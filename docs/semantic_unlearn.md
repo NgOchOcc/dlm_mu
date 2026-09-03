@@ -8,7 +8,7 @@ positions, and trains a student $p_\theta$ to match that target.
 This document separates the mathematical definition from the code and runtime
 details:
 
-- [Part I: Theory](#part-i-theory) defines the target distributions and loss.
+- [Part I: Theory](#part-i-theory) defines the target modes and loss.
 - [Part II: Implementation](#part-ii-implementation) explains configuration,
   numerical details, and TOFU usage.
 
@@ -31,7 +31,7 @@ replacement distribution. Because the target is evaluated on randomly noised
 answer sequences, the objective covers the diffusion states encountered during
 normal DLLM denoising.
 
-## 2. Supported target distributions
+## 2. Target modes
 
 For a masked answer position $i$, let
 
@@ -51,12 +51,49 @@ q_i^*(v)
 Z_i=\sum_{v'\in\mathcal V}p_i^0(v')\exp[-\eta s_i(v')].
 $$
 
-The supported choices for $s_i(v)$ are:
+All supported modes are collected in this section. Each mode changes only the
+score $s_i(v)$; noising, normalization, and the KL objective remain shared. The
+current choices are:
 
 | `target_mode` | Semantic score $s_i(v)$ | Target distribution | Interpretation |
 |---|---|---|---|
 | `rbf` (default) | $\displaystyle k_i(v)=\exp\!\left(-\frac{\lVert E_v-c_i\rVert_2^2}{h_i}\right)$ | $\displaystyle q_i^*(v)=\frac{1}{Z_i}p_i^0(v)\exp[-\eta k_i(v)]$ | Downweights tokens inside the RBF neighborhood of the gold token. |
 | `cosine` | $\displaystyle \cos(E_v,c_i)-1$ | $\displaystyle q_i^*(v)=\frac{1}{Z_i}p_i^0(v)\exp\{-\eta[\cos(E_v,c_i)-1]\}$ | Downweights higher-cosine tokens relative to lower-cosine tokens, without an RBF bandwidth. |
+
+### 2.1 RBF score
+
+The RBF mode computes
+
+$$
+d_i(v)^2=\lVert E_v-c_i\rVert_2^2,
+\qquad
+m_i^2=\operatorname{median}_{v\in\mathcal V}d_i(v)^2,
+\qquad
+h_i=\frac{m_i^2}{\log|\mathcal V|},
+$$
+
+then uses
+
+$$
+s_i(v)=k_i(v)=\exp\!\left(-\frac{d_i(v)^2}{h_i}\right).
+$$
+
+If $h_i$ is zero or non-finite, it falls back to
+$2\sigma_{\mathrm{fallback}}^2$. The median is exact over the tokenizer
+vocabulary.
+
+### 2.2 Shifted-cosine score
+
+The cosine mode normalizes both embedding vectors and uses
+
+$$
+s_i(v)
+=
+\frac{E_v^\top c_i}{\lVert E_v\rVert_2\lVert c_i\rVert_2}-1.
+$$
+
+This score lies in $[-2,0]$ up to numerical precision. It needs no bandwidth or
+fallback scale.
 
 The `cosine` formula is implemented exactly as shown. Its constant `-1` adds the
 same $+\eta$ to every unnormalized log weight, so it cancels in $Z_i$. Therefore
@@ -111,42 +148,7 @@ $$
 The embedding matrix is taken from the frozen teacher and detached from
 autograd, so the target cannot change by moving its geometry.
 
-### 4.3 RBF score
-
-The RBF mode computes
-
-$$
-d_i(v)^2=\lVert E_v-c_i\rVert_2^2,
-\qquad
-m_i^2=\operatorname{median}_{v\in\mathcal V}d_i(v)^2,
-\qquad
-h_i=\frac{m_i^2}{\log|\mathcal V|},
-$$
-
-then uses
-
-$$
-s_i(v)=k_i(v)=\exp\!\left(-\frac{d_i(v)^2}{h_i}\right).
-$$
-
-If $h_i$ is zero or non-finite, it falls back to
-$2\sigma_{\mathrm{fallback}}^2$. The median is exact over the tokenizer
-vocabulary.
-
-### 4.4 Shifted-cosine score
-
-The cosine mode normalizes both embedding vectors and uses
-
-$$
-s_i(v)
-=
-\frac{E_v^\top c_i}{\lVert E_v\rVert_2\lVert c_i\rVert_2}-1.
-$$
-
-This score lies in $[-2,0]$ up to numerical precision. It needs no bandwidth or
-fallback scale.
-
-### 4.5 Normalization and loss
+### 4.3 Normalization and loss
 
 The implementation constructs the target in log space:
 
