@@ -368,7 +368,7 @@ Shared fine-tuning infrastructure is in [`src/trainer/base.py`](../src/trainer/b
 | [`tsd.py`](../src/trainer/dlm/unlearn/tsd.py) | Trajectory-selective distillation. |
 | [`simple_tsd.py`](../src/trainer/dlm/unlearn/simple_tsd.py) | Retain-free SimpleTSD. |
 | [`semantic_unlearn.py`](../src/trainer/dlm/unlearn/semantic_unlearn.py) | Forget-only semantic-target unlearning with RBF and shifted-cosine targets. |
-| [`auto_unlearning.py`](../src/trainer/dlm/unlearn/auto_unlearning.py) | Closed-form anti-conditional unlearning. |
+| [`auto_unlearning.py`](../src/trainer/dlm/unlearn/auto_unlearning.py) | Selective anti-conditional unlearning. |
 | [`simple_tsd_qmask.py`](../src/trainer/dlm/unlearn/simple_tsd_qmask.py) | Promptless-target SimpleTSD variant. |
 | [`uniform_tsd.py`](../src/trainer/dlm/unlearn/uniform_tsd.py) | Uniform TSD variant. |
 | [`concept_subspace.py`](../src/trainer/dlm/unlearn/concept_subspace.py) | Concept-subspace distillation/unlearning. |

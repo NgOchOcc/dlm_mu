@@ -1,14 +1,14 @@
 # Auto Unlearning for Masked Diffusion Language Models
 
-Auto Unlearning is a retain-free objective that turns a difference between the
-frozen teacher's conditional and prompt-masked predictions into one closed-form
-target distribution. A student is then trained directly toward that target on
-normal masked-diffusion states.
+Auto Unlearning is a retain-free objective that suppresses the part of the
+frozen teacher's prediction that the forget prompt adds relative to a
+prompt-masked prediction. A student is then trained directly toward that target
+on normal masked-diffusion states.
 
 This document separates the mathematical definition from code and runtime
 details:
 
-- [Part I: Theory](#part-i-theory) derives the anti-conditional target and loss.
+- [Part I: Theory](#part-i-theory) defines the selective target and loss.
 - [Part II: Implementation](#part-ii-implementation) covers masking, numerical
   behavior, configuration, and TOFU usage.
 
@@ -37,88 +37,76 @@ The name “unconditional” is shorthand for **prompt-masked**. Revealed answer
 tokens in $y_t$ remain visible, so this is not an unconditional language-model
 distribution in the strict probabilistic sense.
 
-## 2. Direct objective
+## 2. Prompt-added log-probability
 
-For a candidate student distribution $p$, consider
+Define the conditional log-probability shift
 
 $$
-J(p)
+\Delta_{i,t}(v)
 =
-D_{\mathrm{KL}}(p\|p_{\mathrm{uncond}})
--
-\lambda D_{\mathrm{KL}}(p\|p_{\mathrm{cond}}),
-\qquad 0\le\lambda<1.
+\log\frac{p_{\mathrm{cond}}^i(v)}{p_{\mathrm{uncond}}^i(v)}.
 $$
 
-The first term pulls the student toward prompt-masked behavior. The negative
-second term pushes it away from the prompt-conditioned behavior associated with
-the forgotten prompt.
-
-Expanding the KL terms gives
+Positive values identify tokens whose probability increases when the forget
+prompt is visible. Negative values identify tokens that the prompt suppresses.
+Semantic unlearning needs to suppress the former, but does not need to reverse
+the latter. Therefore use only the positive part:
 
 $$
-J(p)
+\Delta_{i,t,+}(v)
 =
-\sum_v p(v)
-\left[
-(1-\lambda)\log p(v)
--\log p_{\mathrm{uncond}}(v)
-+\lambda\log p_{\mathrm{cond}}(v)
-\right].
+\max\!\left(0,\Delta_{i,t}(v)\right).
 $$
 
-Because $1-\lambda>0$, the normalized minimizer has a closed form.
+## 3. Selective forgetting target
 
-## 3. Closed-form anti-conditional target
-
-At position $i$, define
+Use the existing bounded control $0\le\lambda<1$ and convert it to the
+nonnegative suppression strength
 
 $$
-q_{i,t}^*(v)
+\alpha=\frac{\lambda}{1-\lambda}.
+$$
+
+Then define
+
+$$
+q_{i,t}^{\mathrm{forget}}(v)
+\propto
+p_{\mathrm{uncond}}^i(v)
+\exp\!\left[-\alpha\Delta_{i,t,+}(v)\right].
+$$
+
+Equivalently,
+
+$$
+q_{i,t}^{\mathrm{forget}}(v)
 =
 \operatorname{Softmax}_v\!\left(
-\frac{
 \log p_{\mathrm{uncond}}^i(v)
--\lambda\log p_{\mathrm{cond}}^i(v)
-}{1-\lambda}
+-\alpha\Delta_{i,t,+}(v)
 \right).
 $$
 
-Equivalently, up to a vocabulary-independent normalization constant,
+For compact, readable log-score notation, let
+$z_c(v)=\log p_{\mathrm{cond}}^i(v)$,
+$z_u(v)=\log p_{\mathrm{uncond}}^i(v)$, and let $z_f$ denote the unnormalized
+forget-target score. Then
 
 $$
-q_{i,t}^*(v)
-\propto
-\left[p_{\mathrm{uncond}}^i(v)\right]^{1/(1-\lambda)}
-\left[p_{\mathrm{cond}}^i(v)\right]^{-\lambda/(1-\lambda)}.
-$$
-
-In logit form, vocabulary-independent softmax constants cancel, yielding the
-useful interpretation
-
-$$
-z^*_{mathrm{forget}}
+z_f(v)
 =
-z_{mathrm{uncond}}
+z_u(v)
 -
-\frac{\lambda}{1-\lambda}
-\left(z_{\mathrm{cond}}-z_{\mathrm{uncond}}\right).
+\alpha\left[z_c(v)-z_u(v)\right]_+.
 $$
 
-The conditional shift $z_{\mathrm{cond}}-z_{\mathrm{uncond}}$ represents what
-the prompt adds. The target extrapolates in the opposite direction.
+Here $z_c$ and $z_u$ are normalized log probabilities, not raw model logits.
+This distinction matters because the positive-part operation is not invariant
+to a vocabulary-wide additive constant.
 
 ## 4. Training loss
 
-The direct objective and closed-form target satisfy
-
-$$
-J(p)
-=
-(1-\lambda)D_{\mathrm{KL}}(p\|q^*)+\text{constant}.
-$$
-
-Therefore the student minimizes **reverse KL**:
+The student minimizes **reverse KL** to the selective target:
 
 $$
 \mathcal L_{\mathrm{Auto}}
@@ -130,22 +118,23 @@ $$
 D_{\mathrm{KL}}\!\left(
 p_\theta^i(\cdot\mid x,y_t)
 \;\|\;
-q_{i,t}^*
+q_{i,t}^{\mathrm{forget}}
 \right)
 \right].
 $$
 
-This KL direction is part of the derivation. Replacing it with
-$D_{\mathrm{KL}}(q^*\|p_\theta)$ would define a different optimization problem.
+This KL direction is part of the objective. Replacing it with
+$D_{\mathrm{KL}}(q^{\mathrm{forget}}\|p_\theta)$ would define a different
+optimization problem.
 
 ## 5. Effect of $\lambda$
 
 | Value | Behavior |
 |---:|---|
-| $\lambda=0$ | $q^*=p_{\mathrm{uncond}}$: match the prompt-masked teacher. |
-| $0<\lambda<1$ | Extrapolate away from the conditional shift with strength $\lambda/(1-\lambda)$. |
-| $\lambda\to1^-$ | The target can become extremely sharp because the extrapolation factor diverges. |
-| $\lambda\ge1$ | Unsupported: the smooth closed-form minimizer used here is no longer valid. |
+| $\lambda=0$ | $q^{\mathrm{forget}}=p_{\mathrm{uncond}}$: match the prompt-masked teacher. |
+| $0<\lambda<1$ | Suppress only prompt-added probability with strength $\alpha=\lambda/(1-\lambda)$. |
+| $\lambda\to1^-$ | The target can become extremely sharp because $\alpha$ diverges. |
+| $\lambda\ge1$ | Unsupported because the convenience mapping to $\alpha$ is undefined or negative. |
 
 ---
 
@@ -162,7 +151,9 @@ For each forget batch, the trainer:
    $\log p_{\mathrm{cond}}$.
 4. Replaces attended, non-answer, non-padding prompt tokens with the model's mask
    token and runs the same frozen teacher to obtain $\log p_{\mathrm{uncond}}$.
-5. Constructs $\log q^*$ in float32 with `logsumexp` normalization.
+5. Clamps $\log p_{\mathrm{cond}}-\log p_{\mathrm{uncond}}$ at zero and
+   constructs $\log q^{\mathrm{forget}}$ in float32 with `logsumexp`
+   normalization.
 6. Computes reverse KL at masked answer positions and averages first within each
    active example, then across examples.
 
@@ -190,7 +181,7 @@ The trainer defaults are in
 
 | Argument | Default | Constraint | Purpose |
 |---|---:|---|---|
-| `lam` | `0.5` | $0\le\lambda<1$ | Strength of extrapolation away from the conditional teacher. |
+| `lam` | `0.5` | $0\le\lambda<1$ | Bounded control for $\alpha=\lambda/(1-\lambda)$. |
 
 For direct Hydra runs, override it with:
 
@@ -206,7 +197,7 @@ Run the default LLaDA/forget10 experiment with:
 bash scripts/dlm/tofu/run_auto_unlearning.sh
 ```
 
-Set the anti-conditional strength through `LAMBDA`:
+Set the bounded suppression control through `LAMBDA`:
 
 ```bash
 LAMBDA=0.25 bash scripts/dlm/tofu/run_auto_unlearning.sh
@@ -226,18 +217,18 @@ overrides work as they do for other DLLM methods.
 
 ## 10. Caveats
 
-- Values close to one strongly amplify small teacher-logit differences. Begin
+- Values close to one strongly amplify prompt-added log-probability. Begin
   with moderate values and inspect target entropy and training stability.
 - If revealed answer tokens already expose the forgotten fact, the prompt-masked
   teacher can still assign it high probability.
-- The method removes the prompt-associated distributional shift; that does not
-  by itself prove removal under paraphrases or unrelated extraction attacks.
+- The method suppresses prompt-associated positive shifts; that does not by
+  itself prove removal under paraphrases or unrelated extraction attacks.
 
 ## 11. Source map
 
 | Responsibility | File |
 |---|---|
-| Closed-form target and reverse-KL trainer | [`src/trainer/dlm/unlearn/auto_unlearning.py`](../src/trainer/dlm/unlearn/auto_unlearning.py) |
+| Selective target and reverse-KL trainer | [`src/trainer/dlm/unlearn/auto_unlearning.py`](../src/trainer/dlm/unlearn/auto_unlearning.py) |
 | Shared DLLM noising and output handling | [`src/trainer/dlm/base.py`](../src/trainer/dlm/base.py) |
 | Frozen-teacher and reduction utilities | [`src/trainer/dlm/unlearn/base.py`](../src/trainer/dlm/unlearn/base.py) |
 | Trainer defaults | [`configs/trainer/DiffusionAutoUnlearning.yaml`](../configs/trainer/DiffusionAutoUnlearning.yaml) |

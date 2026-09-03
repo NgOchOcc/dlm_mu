@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Train closed-form Auto Unlearning on TOFU. The frozen teacher supplies a
+# Train selective Auto Unlearning on TOFU. The frozen teacher supplies a
 # conditional distribution and a prompt-masked distribution on the same noised
-# answer; their anti-conditional closed form becomes the reverse-KL target.
+# answer; only probability added by the prompt is suppressed in the target.
 #
 # Usage:
 #   bash scripts/dlm/tofu/run_auto_unlearning.sh
@@ -13,8 +13,8 @@
 #   MODEL        llada | dream                  (default: llada)
 #   GPUS         comma-separated device ids     (default: 0,1,2,3)
 #   SPLIT        forget10 | forget05 | forget01 (default: forget10)
-#   LAMBDA       anti-conditional strength      (default: 0.5; 0 <= value < 1)
-#   TASK_SUFFIX  suffix for the save directory  (default: _auto_lambda${LAMBDA})
+#   LAMBDA       bounded suppression control     (default: 0.5; 0 <= value < 1)
+#   TASK_SUFFIX  suffix for the save directory   (default: _auto_lambda${LAMBDA})
 # Any command-line arguments are passed through to unlearn.sh / Hydra.
 
 set -euo pipefail

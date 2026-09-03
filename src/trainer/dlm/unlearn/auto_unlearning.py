@@ -1,15 +1,18 @@
-"""Closed-form anti-conditional unlearning for masked-diffusion LMs.
+"""Selective anti-conditional unlearning for masked-diffusion LMs.
 
 For a shared noised answer state ``y_t``, let ``p_cond`` be the frozen teacher
 with the forget prompt visible and ``p_uncond`` the same teacher with the prompt
-replaced by mask tokens. For ``0 <= lam < 1``, construct
+replaced by mask tokens. For ``0 <= lam < 1``, set
 
-    q*(v) = softmax((log p_uncond(v) - lam * log p_cond(v)) / (1 - lam)).
+    alpha = lam / (1 - lam)
 
-The conditional student is trained with ``KL(p_theta || q*)`` at masked answer
-positions. This is the closed-form equivalent of minimizing
-``KL(p_theta || p_uncond) - lam * KL(p_theta || p_cond)`` with respect to the
-student distribution. The method uses no retain examples or denoising NLL.
+    delta_+(v) = max(0, log p_cond(v) - log p_uncond(v)),
+    q_forget(v) = softmax(log p_uncond(v) - alpha * delta_+(v)).
+
+The positive part suppresses only probability that the prompt added; it does
+not reverse probability that the prompt suppressed. The conditional student is
+trained with ``KL(p_theta || q_forget)`` at masked answer positions. The method
+uses no retain examples or denoising NLL.
 """
 
 import math
@@ -27,6 +30,7 @@ class DiffusionAutoUnlearning(DiffusionUnlearnTrainer):
 
         super().__init__(*args, **kwargs)
         self.lam = lam
+        self.alpha = lam / (1.0 - lam)
         self.mask_id = self.processing_class.mask_token_id
         self.pad_id = self.processing_class.pad_token_id
         self.vocab_size = len(self.processing_class)
@@ -53,11 +57,11 @@ class DiffusionAutoUnlearning(DiffusionUnlearnTrainer):
         return self._log_probs(logits)
 
     @torch.no_grad()
-    def _anti_conditional_target(self, log_p_uncond, log_p_cond):
-        """Return the detached, normalized closed-form target ``(log_q, q)``."""
-        target_logits = (log_p_uncond.float() - self.lam * log_p_cond.float()) / (
-            1.0 - self.lam
-        )
+    def _forget_target(self, log_p_uncond, log_p_cond):
+        """Return the detached target that suppresses prompt-added probability."""
+        log_p_uncond = log_p_uncond.float()
+        prompt_added = (log_p_cond.float() - log_p_uncond).clamp_min(0.0)
+        target_logits = log_p_uncond - self.alpha * prompt_added
         log_q = target_logits - torch.logsumexp(
             target_logits, dim=-1, keepdim=True
         )
@@ -94,7 +98,7 @@ class DiffusionAutoUnlearning(DiffusionUnlearnTrainer):
             log_p_uncond = self._teacher_log_probs(
                 promptless, attention_mask, masked
             )
-            log_q, _ = self._anti_conditional_target(log_p_uncond, log_p_cond)
+            log_q, _ = self._forget_target(log_p_uncond, log_p_cond)
 
         masked_kl = self._reverse_kl(log_p, log_q)
         per_token = art["logits"][..., 0].float() * 0.0

@@ -3,7 +3,6 @@ defaults:
 
 handler: DiffusionAutoUnlearning
 method_args:
-  # Closed-form anti-conditional strength. Must satisfy 0 <= lam < 1.
-  # lam=0 matches the prompt-masked teacher; values near 1 extrapolate strongly
-  # away from the conditional teacher and can produce a very sharp target.
+  # Bounded suppression control. Must satisfy 0 <= lam < 1; the trainer uses
+  # alpha = lam / (1 - lam), and lam=0 matches the prompt-masked teacher.
   lam: 0.5
