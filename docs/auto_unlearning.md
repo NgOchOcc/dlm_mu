@@ -110,7 +110,7 @@ model's normal conditional behavior with the prompt-masked distribution.
 
 ## 4. Training loss
 
-The student minimizes **reverse KL** to the selective target:
+The student minimizes **forward KL** from the selective target:
 
 $$
 \mathcal L_{\mathrm{Auto}}
@@ -120,16 +120,15 @@ $$
 \frac{1}{|\mathcal M_t|}
 \sum_{i\in\mathcal M_t}
 D_{\mathrm{KL}}\!\left(
-p_\theta^i(\cdot\mid x,y_t)
-\;\|\;
 q_{i,t}^{\mathrm{forget}}
+\;\|\;
+p_\theta^i(\cdot\mid x,y_t)
 \right)
 \right].
 $$
 
-This KL direction is part of the objective. Replacing it with
-$D_{\mathrm{KL}}(q^{\mathrm{forget}}\|p_\theta)$ would define a different
-optimization problem.
+This KL direction is part of the objective: the fixed selective target weights
+the student log probabilities, and gradients flow only through $p_\theta$.
 
 ## 5. Effect of $\lambda$
 
@@ -159,7 +158,7 @@ For each forget batch, the trainer:
    the resulting suppression score from $\log p_{\mathrm{cond}}$, and
    constructs $\log q^{\mathrm{forget}}$ in float32 with `logsumexp`
    normalization.
-6. Computes reverse KL at masked answer positions and averages first within each
+6. Computes forward KL at masked answer positions and averages first within each
    active example, then across examples.
 
 There is one student forward and two frozen-teacher forwards per batch. Teacher
@@ -233,7 +232,7 @@ overrides work as they do for other DLLM methods.
 
 | Responsibility | File |
 |---|---|
-| Selective target and reverse-KL trainer | [`src/trainer/dlm/unlearn/auto_unlearning.py`](../src/trainer/dlm/unlearn/auto_unlearning.py) |
+| Selective target and forward-KL trainer | [`src/trainer/dlm/unlearn/auto_unlearning.py`](../src/trainer/dlm/unlearn/auto_unlearning.py) |
 | Shared DLLM noising and output handling | [`src/trainer/dlm/base.py`](../src/trainer/dlm/base.py) |
 | Frozen-teacher and reduction utilities | [`src/trainer/dlm/unlearn/base.py`](../src/trainer/dlm/unlearn/base.py) |
 | Trainer defaults | [`configs/trainer/DiffusionAutoUnlearning.yaml`](../configs/trainer/DiffusionAutoUnlearning.yaml) |

@@ -17,7 +17,7 @@ holdout_split: holdout10
 question_key: "question"
 
 # Dream needs right-shifted logits. The launcher supplies this automatically.
-# Auto Unlearning uses an unweighted mean of reverse KL over masked answer
+# Auto Unlearning uses an unweighted mean of forward KL over masked answer
 # positions; the configured diffusion scheduler still samples the noised state.
 
 eval:
