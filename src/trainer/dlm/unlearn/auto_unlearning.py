@@ -11,7 +11,7 @@ replaced by mask tokens. For ``0 <= lam < 1``, set
 
 The conditional distribution remains the target baseline, preserving the
 teacher's normal behavior except where the prompt-added score applies selective
-suppression. The conditional student is trained with ``KL(q_forget || p_theta)``
+suppression. The conditional student is trained with ``KL(p_theta || q_forget)``
 at masked answer positions. The method uses no retain examples or denoising NLL.
 """
 
@@ -68,10 +68,10 @@ class DiffusionAutoUnlearning(DiffusionUnlearnTrainer):
         return log_q.detach(), log_q.exp().detach()
 
     @staticmethod
-    def _forward_kl(log_q, log_p):
-        """Tokenwise ``KL(q || p)`` over the vocabulary dimension."""
-        q = log_q.exp()
-        return (q * (log_q - log_p)).sum(-1)
+    def _reverse_kl(log_p, log_q):
+        """Tokenwise ``KL(p || q)`` over the vocabulary dimension."""
+        p = log_p.exp()
+        return (p * (log_p - log_q)).sum(-1)
 
     def compute_loss(
         self, model, inputs, return_outputs=False, num_items_in_batch=None
@@ -100,7 +100,7 @@ class DiffusionAutoUnlearning(DiffusionUnlearnTrainer):
             )
             log_q, _ = self._forget_target(log_p_cond, log_p_uncond)
 
-        masked_kl = self._forward_kl(log_q, log_p)
+        masked_kl = self._reverse_kl(log_p, log_q)
         per_token = art["logits"][..., 0].float() * 0.0
         per_token = per_token.masked_scatter(masked, masked_kl)
         loss = self._reduce(per_token, masked, torch.ones_like(per_token))
