@@ -368,7 +368,7 @@ Shared fine-tuning infrastructure is in [`src/trainer/base.py`](../src/trainer/b
 | [`tsd.py`](../src/trainer/dlm/unlearn/tsd.py) | Trajectory-selective distillation. |
 | [`simple_tsd.py`](../src/trainer/dlm/unlearn/simple_tsd.py) | Retain-free SimpleTSD. |
 | [`semantic_unlearn.py`](../src/trainer/dlm/unlearn/semantic_unlearn.py) | Forget-only semantic-target unlearning with RBF and shifted-cosine targets. |
-| [`auto_unlearning.py`](../src/trainer/dlm/unlearn/auto_unlearning.py) | Selective anti-conditional unlearning. |
+| [`auto_unlearning.py`](../src/trainer/dlm/unlearn/auto_unlearning.py) | Conditional-baseline selective anti-conditional unlearning. |
 | [`simple_tsd_qmask.py`](../src/trainer/dlm/unlearn/simple_tsd_qmask.py) | Promptless-target SimpleTSD variant. |
 | [`uniform_tsd.py`](../src/trainer/dlm/unlearn/uniform_tsd.py) | Uniform TSD variant. |
 | [`concept_subspace.py`](../src/trainer/dlm/unlearn/concept_subspace.py) | Concept-subspace distillation/unlearning. |
@@ -485,7 +485,7 @@ Important SimpleTSD-related files include:
 | [`simpletsd_qmask.sh`](../scripts/dlm/tofu/simpletsd_qmask.sh) | Promptless-target variant launcher. |
 | [`simple_tsd_smoke_test.py`](../scripts/dlm/tofu/simple_tsd_smoke_test.py) | Fast method-level sanity checks. |
 | [`run_semantic_unlearn.sh`](../scripts/dlm/tofu/run_semantic_unlearn.sh) | Semantic_Unlearn launcher. |
-| [`run_auto_unlearning.sh`](../scripts/dlm/tofu/run_auto_unlearning.sh) | Closed-form Auto Unlearning launcher. |
+| [`run_auto_unlearning.sh`](../scripts/dlm/tofu/run_auto_unlearning.sh) | Conditional-baseline Auto Unlearning launcher. |
 | [`simple_tsd_probe_forget.py`](../scripts/dlm/tofu/simple_tsd_probe_forget.py) | Inspect selected forget positions. |
 | [`simple_tsd_probe_to_html.py`](../scripts/dlm/tofu/simple_tsd_probe_to_html.py) | Render probe output for inspection. |
 | [`simple_tsd_viz_target.py`](../scripts/dlm/tofu/simple_tsd_viz_target.py) | Visualize edited target behavior. |

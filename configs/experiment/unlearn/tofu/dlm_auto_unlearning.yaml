@@ -1,7 +1,8 @@
 # @package _global_
-# Forget-only Auto Unlearning for masked-diffusion LMs on TOFU. The target
-# suppresses probability that the prompt adds relative to the prompt-masked
-# teacher. There is no retain dataset or denoising NLL.
+# Forget-only Auto Unlearning for masked-diffusion LMs on TOFU. The target keeps
+# the conditional teacher as its base and suppresses probability that the prompt
+# adds relative to the prompt-masked teacher. There is no retain dataset or
+# denoising NLL.
 defaults:
   - override /model: LLaDA-8B-Instruct
   - override /trainer: DiffusionAutoUnlearning

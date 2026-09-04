@@ -1,9 +1,9 @@
 # Auto Unlearning for Masked Diffusion Language Models
 
-Auto Unlearning is a retain-free objective that suppresses the part of the
-frozen teacher's prediction that the forget prompt adds relative to a
-prompt-masked prediction. A student is then trained directly toward that target
-on normal masked-diffusion states.
+Auto Unlearning is a retain-free objective that starts from the frozen teacher's
+original conditional prediction and suppresses the part that the forget prompt
+adds relative to a prompt-masked prediction. A student is then trained directly
+toward that target on normal masked-diffusion states.
 
 This document separates the mathematical definition from code and runtime
 details:
@@ -64,7 +64,7 @@ Use the existing bounded control $0\le\lambda<1$ and convert it to the
 nonnegative suppression strength
 
 $$
-\alpha=\frac{\lambda}{1-\lambda}.
+\beta=\frac{\lambda}{1-\lambda}.
 $$
 
 Then define
@@ -72,8 +72,8 @@ Then define
 $$
 q_{i,t}^{\mathrm{forget}}(v)
 \propto
-p_{\mathrm{uncond}}^i(v)
-\exp\!\left[-\alpha\Delta_{i,t,+}(v)\right].
+p_{\mathrm{cond}}^i(v)
+\exp\!\left[-\beta\Delta_{i,t,+}(v)\right].
 $$
 
 Equivalently,
@@ -82,8 +82,8 @@ $$
 q_{i,t}^{\mathrm{forget}}(v)
 =
 \operatorname{Softmax}_v\!\left(
-\log p_{\mathrm{uncond}}^i(v)
--\alpha\Delta_{i,t,+}(v)
+\log p_{\mathrm{cond}}^i(v)
+-\beta\Delta_{i,t,+}(v)
 \right).
 $$
 
@@ -95,14 +95,18 @@ forget-target score. Then
 $$
 z_f(v)
 =
-z_u(v)
+z_c(v)
 -
-\alpha\left[z_c(v)-z_u(v)\right]_+.
+\beta\left[z_c(v)-z_u(v)\right]_+.
 $$
 
 Here $z_c$ and $z_u$ are normalized log probabilities, not raw model logits.
 This distinction matters because the positive-part operation is not invariant
 to a vocabulary-wide additive constant.
+
+Using $p_{\mathrm{cond}}$ as the base is deliberate: the conditional-vs-
+prompt-masked difference decides what to suppress, but does not replace the
+model's normal conditional behavior with the prompt-masked distribution.
 
 ## 4. Training loss
 
@@ -131,10 +135,10 @@ optimization problem.
 
 | Value | Behavior |
 |---:|---|
-| $\lambda=0$ | $q^{\mathrm{forget}}=p_{\mathrm{uncond}}$: match the prompt-masked teacher. |
-| $0<\lambda<1$ | Suppress only prompt-added probability with strength $\alpha=\lambda/(1-\lambda)$. |
-| $\lambda\to1^-$ | The target can become extremely sharp because $\alpha$ diverges. |
-| $\lambda\ge1$ | Unsupported because the convenience mapping to $\alpha$ is undefined or negative. |
+| $\lambda=0$ | $q^{\mathrm{forget}}=p_{\mathrm{cond}}$: preserve the original conditional teacher. |
+| $0<\lambda<1$ | Start from the conditional teacher and suppress only prompt-added probability with strength $\beta=\lambda/(1-\lambda)$. |
+| $\lambda\to1^-$ | The target can become extremely sharp because $\beta$ diverges. |
+| $\lambda\ge1$ | Unsupported because the convenience mapping to $\beta$ is undefined or negative. |
 
 ---
 
@@ -151,7 +155,8 @@ For each forget batch, the trainer:
    $\log p_{\mathrm{cond}}$.
 4. Replaces attended, non-answer, non-padding prompt tokens with the model's mask
    token and runs the same frozen teacher to obtain $\log p_{\mathrm{uncond}}$.
-5. Clamps $\log p_{\mathrm{cond}}-\log p_{\mathrm{uncond}}$ at zero and
+5. Clamps $\log p_{\mathrm{cond}}-\log p_{\mathrm{uncond}}$ at zero, subtracts
+   the resulting suppression score from $\log p_{\mathrm{cond}}$, and
    constructs $\log q^{\mathrm{forget}}$ in float32 with `logsumexp`
    normalization.
 6. Computes reverse KL at masked answer positions and averages first within each
@@ -181,7 +186,7 @@ The trainer defaults are in
 
 | Argument | Default | Constraint | Purpose |
 |---|---:|---|---|
-| `lam` | `0.5` | $0\le\lambda<1$ | Bounded control for $\alpha=\lambda/(1-\lambda)$. |
+| `lam` | `0.5` | $0\le\lambda<1$ | Bounded control for $\beta=\lambda/(1-\lambda)$. |
 
 For direct Hydra runs, override it with:
 

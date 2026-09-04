@@ -4,5 +4,5 @@ defaults:
 handler: DiffusionAutoUnlearning
 method_args:
   # Bounded suppression control. Must satisfy 0 <= lam < 1; the trainer uses
-  # alpha = lam / (1 - lam), and lam=0 matches the prompt-masked teacher.
+  # beta = lam / (1 - lam), and lam=0 preserves the conditional teacher.
   lam: 0.5

@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Train selective Auto Unlearning on TOFU. The frozen teacher supplies a
 # conditional distribution and a prompt-masked distribution on the same noised
-# answer; only probability added by the prompt is suppressed in the target.
+# answer; the conditional distribution remains the base while probability added
+# by the prompt is suppressed in the target.
 #
 # Usage:
 #   bash scripts/dlm/tofu/run_auto_unlearning.sh
