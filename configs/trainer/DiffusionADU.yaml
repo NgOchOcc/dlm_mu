@@ -1,0 +1,32 @@
+# Selective anti-conditional unlearning + secret-free generative distillation.
+defaults:
+  - DiffusionFinetune
+
+handler: DiffusionADU
+method_args:
+  # L_ADU = auto_weight * L_auto + (1 - auto_weight) * L_gendistill.
+  auto_weight: 0.5
+  # Anti-conditional suppression strength; must satisfy 0 <= lam < 1.
+  lam: 0.5
+
+  # Prompt-dependent position selection and secret-free target generation.
+  select_method: topk
+  topk_frac: 0.8
+  otsu_relax: 0.0
+  tau: 0.0
+  sel_mc: 16
+  drop_question_overlap: true
+  gen_steps: 128
+  keep_answer: false
+  query_blank_identity: true
+  keep_subject_name: false
+
+  # Generative distillation target.
+  distill_mode: sft
+  distill_topk: 64
+  suppress_gold: true
+  loss_d_ahat_weight: 1.0
+
+  # Independent diffusion-mask draws and overall forget-loss scale.
+  loss_mc: 1
+  gamma: 1.0

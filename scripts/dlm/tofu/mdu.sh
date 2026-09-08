@@ -11,12 +11,10 @@
 # SPLIT_EPOCHS in lib.sh (tofu_split), so MDU trains for exactly as long as every
 # other method on the same split. Export UNLEARN_EPOCHS to override.
 set -euo pipefail
-HERE="$(cd "$(dirname "$0")" && pwd)"
-SPLIT="${3:-unlearn90}"
-
 for tau in ${TAUS:-0.5}; do
     TASK_SUFFIX="_tau${tau}" \
-        bash "$HERE/unlearn.sh" "${1:-}" "${2:-}" "$SPLIT" MDU \
+        bash "$(dirname "$0")/unlearn.sh" \
+        "${1:-llada}" "${2:-}" "${3:-unlearn90}" MDU \
         trainer.method_args.tau="$tau" \
         trainer.method_args.eta=0.0 \
         trainer.method_args.kl_direction=forward \

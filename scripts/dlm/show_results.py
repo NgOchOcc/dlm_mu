@@ -14,6 +14,8 @@ ERASING_PARTS = [
     ("forget_truth_ratio", True),
 ]
 
+
+ERASING_FLUENCY = ("forget_Q_A_gibberish", True)
 LINGUISTIC_PARTS = [
     "forget_Q_A_Fluency",
     "forget_Q_A_Relevance",
@@ -21,10 +23,6 @@ LINGUISTIC_PARTS = [
     "forget_Q_A_Correctness",
 ]
 
-# Linguistic Quality = arithmetic mean of three judge dimensions on the raw 0-10
-# scale (Relevance is displayed but not aggregated). Correctness is stored already
-# inverted (rubric: 8-10 = completely wrong, 0-1 = fully accurate), so it enters
-# as its 0-10 complement 10 - Correctness, i.e. higher = the answer is accurate.
 LINGUISTIC_MAX = 10.0
 LINGUISTIC_LQ_PARTS = [
     ("forget_Q_A_Fluency", False),        # used as stored
@@ -33,15 +31,12 @@ LINGUISTIC_LQ_PARTS = [
 ]
 
 def _hmean(vals):
-    """Harmonic mean of a list of non-negative numbers; None if any missing,
-    0 if any is <= 0 (the mean would be pulled to 0 anyway, and hmean errors)."""
     if any(not isinstance(v, (int, float)) for v in vals):
         return None
     return 0.0 if min(vals) <= 0.0 else float(sc.stats.hmean(vals))
 
 
 def _amean(vals):
-    """Arithmetic mean; None if any value is missing/non-numeric."""
     if any(not isinstance(v, (int, float)) for v in vals):
         return None
     return sum(vals) / len(vals)
@@ -52,6 +47,7 @@ GROUPS = [
         ("forget_Q_A_ROUGE", "f_R"),
         ("forget_truth_ratio", "f_TR"),
         ("erasing_quality", "EQ"),
+        ("forget_Q_A_gibberish", "f_Flu"),
     ]),
     ("Retention Quality", [
         ("retain_Q_A_ROUGE", "ret_R"),
@@ -75,11 +71,10 @@ METHOD_ORDER = {
     "WGA": 8, "DDU": 9, "TRACEU": 11,
 }
 
-# Forget-only task names carry one of these suffixes (TASK_SUFFIX / TAG in the run
-# scripts). Both spellings occur: older TOFU runs used "_forgetonly", the DLM
-# scripts (e.g. simple_tsd.sh) write "_forget_only".
 FORGET_ONLY_SUFFIXES = ("_forgetonly", "_forget_only")
-INHERENT_FORGET_ONLY = {"TSD", "SimpleTSD"}
+INHERENT_FORGET_ONLY = {"RepelGenDistill"}
+    
+# INHERENT_FORGET_ONLY = {"TSD", "RepelGenDistill"}
 
 
 def _split_forget_only(core):
@@ -100,6 +95,17 @@ def _is_inherent_forget_only(base_method):
     return base_method in INHERENT_FORGET_ONLY or any(
         base_method.startswith(f"{m}_") for m in INHERENT_FORGET_ONLY
     )
+
+
+# `simple` mode: only the headline TSD run and the standard baselines. Every TSD /
+# SimpleTSD sweep variant (base_method carrying a "<method>_..." arm tag, e.g.
+# TSD_pathwise_minimal, SimpleTSD, SimpleTSD_alpha0.5) is dropped; bare "TSD" stays.
+SIMPLE_METHODS = set(METHOD_ORDER) | {"TSD"}
+
+
+def _is_simple_method(base_method):
+    """True for a clean baseline or the bare TSD run; False for any sweep variant."""
+    return base_method in SIMPLE_METHODS
 
 # Optional trailing "_<N>epochs" task-name tag (written by unlearn.sh with
 # EPOCH_IN_NAME=1) recording how long a run trained, so epoch sweeps of one method
@@ -175,6 +181,11 @@ def load_summary(eval_dir):
         for k, higher in ERASING_PARTS
     ]
     eq = _hmean(eq_parts)
+    # Second-stage HM: balance the erasing-strength bundle against fluency 50/50 so a
+    # method that forgets *fluently* scores above one that forgets via gibberish.
+    fk, _ = ERASING_FLUENCY
+    if eq is not None and isinstance(data.get(fk), (int, float)):
+        eq = _hmean([eq, data[fk]])
     if eq is not None:
         data["erasing_quality"] = eq
 
@@ -223,6 +234,13 @@ def collect_rows(model, forget_split, mode="both"):
             continue
         if mode == "forget_only" and not (is_forget_only or _is_inherent_forget_only(base_method)):
             continue
+        # `simple`: only clean baselines + bare TSD, and for the baselines only their
+        # forget-only arm (TSD is inherently forget-only, so it always qualifies).
+        if mode == "simple" and not (
+            _is_simple_method(base_method)
+            and (is_forget_only or _is_inherent_forget_only(base_method))
+        ):
+            continue
         data = load_summary(md)
         if data is not None:
             methods.append((method, data))
@@ -250,7 +268,7 @@ def discover_models_muse():
     return sorted(models)
 
 
-def collect_rows_muse(model, split):
+def collect_rows_muse(model, split, mode="both"):
     rows = []
     base = load_summary_muse(EVAL_DIR / f"muse_{model}_{split}_full")
     if base is not None:
@@ -261,6 +279,9 @@ def collect_rows_muse(model, split):
         method = md.name.split("Diffusion")[-1]
         if method.endswith(MUSE_FORGET_ONLY_SUFFIX):
             method = method[: -len(MUSE_FORGET_ONLY_SUFFIX)]
+        _, base_method = _split_forget_only(_strip_epochs(method))
+        if mode == "simple" and not _is_simple_method(base_method):
+            continue
         data = load_summary_muse(md)
         if data is not None:
             methods.append((method, data))
@@ -371,11 +392,13 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument(
         "--mode",
-        choices=["both", "forget_only"],
+        choices=["both", "forget_only", "simple"],
         default="both",
         help="'both' shows every method variant; 'forget_only' shows the "
         "_forgetonly runs plus retain-free-by-design methods like TSD (all other "
-        "no-suffix runs dropped, GradAscent included). Reference rows always show.",
+        "no-suffix runs dropped, GradAscent included); 'simple' shows only the "
+        "headline TSD run and the standard baselines, dropping all TSD/SimpleTSD "
+        "sweep variants. Reference rows always show.",
     )
     args = ap.parse_args()
     for forget_split in FORGET_SPLITS:
@@ -399,7 +422,7 @@ def main():
         model_rows = {}
         present = []
         for model in muse_models:
-            block = dict(collect_rows_muse(model, split))
+            block = dict(collect_rows_muse(model, split, mode=args.mode))
             if not block:
                 continue
             present.append(model)

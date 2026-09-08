@@ -29,18 +29,16 @@ cd "$(dirname "$0")/../../.." || exit 1
 source scripts/dlm/lib.sh
 dlm_config "${1:-}"
 
-FORGET_SPEC="${2:-forget10}"
-TARGETS="${3:-all}"
 export JUDGE_WORKERS="${JUDGE_WORKERS:-8}"
-JUDGE_PARALLEL="${JUDGE_PARALLEL:-1}"
+parallel="${JUDGE_PARALLEL:-1}"
 
-tofu_split "$FORGET_SPEC"          # -> FORGET, RETAIN
-parse_methods "${METHODS:-}"       # -> METHODS_LIST
-SUFFIX="${TASK_SUFFIX:-}"
-[[ "$TARGETS" == all ]] && TARGETS=refs,methods
+tofu_split "${2:-forget10}"
+parse_methods "${METHODS:-}"
+targets="${3:-all}"
+[[ "$targets" == all ]] && targets=refs,methods
 
 dirs=()
-for target in ${TARGETS//,/ }; do
+for target in ${targets//,/ }; do
     case "$target" in
         refs|base|retain)
             [[ "$target" != retain ]] && dirs+=("saves/eval/tofu_${MODEL}_retain100_${FORGET}")
@@ -48,7 +46,7 @@ for target in ${TARGETS//,/ }; do
             ;;
         methods)
             for method in "${METHODS_LIST[@]}"; do
-                dirs+=("saves/eval/${FORGET}/tofu_${MODEL}_${method}${SUFFIX}")
+                dirs+=("saves/eval/${FORGET}/tofu_${MODEL}_${method}${TASK_SUFFIX:-}")
             done
             ;;
         *) die "unknown target '${target}' (want all|refs|base|retain|methods)" ;;
@@ -56,7 +54,7 @@ for target in ${TARGETS//,/ }; do
 done
 
 mkdir -p logs/judge
-echo "judge ${MODEL} ${FORGET} (${TARGETS}): ${#dirs[@]} targets, ${JUDGE_WORKERS} workers, ${JUDGE_PARALLEL} in parallel"
+echo "judge ${MODEL} ${FORGET} (${targets}): ${#dirs[@]} targets, ${JUDGE_WORKERS} workers, ${parallel} in parallel"
 
 pids=()
 fail=0
@@ -72,7 +70,7 @@ for dir in "${dirs[@]}"; do
     # Export OVERWRITE=1 to redo scores that are already there.
     python scripts/dlm/run_judge.py "$dir" > "$log" 2>&1 &
     pids+=($!)
-    while (( $(jobs -rp | wc -l) >= JUDGE_PARALLEL )); do wait -n || fail=1; done
+    while (( $(jobs -rp | wc -l) >= parallel )); do wait -n || fail=1; done
 done
 
 for pid in "${pids[@]}"; do wait "$pid" || fail=1; done

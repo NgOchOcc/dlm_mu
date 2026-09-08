@@ -107,9 +107,9 @@ rundir_for() {
 ckpt_for() { resolve_ckpt "$(rundir_for "$1")"; }
 tofu_split() {
     case "${1:-}" in
-        unlearn90|forget10) FORGET=forget10; RETAIN=retain90; HOLDOUT=holdout10; SPLIT_EPOCHS=20 ;;
-        unlearn95|forget05) FORGET=forget05; RETAIN=retain95; HOLDOUT=holdout05; SPLIT_EPOCHS=30 ;;
-        unlearn99|forget01) FORGET=forget01; RETAIN=retain99; HOLDOUT=holdout01; SPLIT_EPOCHS=50 ;;
+        unlearn90|forget10) FORGET=forget10; RETAIN=retain90; HOLDOUT=holdout10; SPLIT_EPOCHS=5 ;;
+        unlearn95|forget05) FORGET=forget05; RETAIN=retain95; HOLDOUT=holdout05; SPLIT_EPOCHS=10 ;;
+        unlearn99|forget01) FORGET=forget01; RETAIN=retain99; HOLDOUT=holdout01; SPLIT_EPOCHS=20 ;;
         *) die "unknown split '${1:-}' (want unlearn90|unlearn95|unlearn99)" ;;
     esac
     UNLEARN_EPOCHS="${UNLEARN_EPOCHS:-$SPLIT_EPOCHS}"
@@ -146,12 +146,9 @@ method_setup() {
             EXP=unlearn/tofu/dlm
             ;;
         DiffusionMDU)       EXP=unlearn/tofu/dlm_mdu ;;
-        DiffusionGAP)       EXP=unlearn/tofu/dlm_gap ;;
-        DiffusionAURA)      EXP=unlearn/tofu/dlm_aura ;;
         DiffusionTSD)       EXP=unlearn/tofu/dlm_tsd ;;
-        DiffusionSimpleTSD) EXP=unlearn/tofu/dlm_simple_tsd ;;
-        DiffusionTrajRMDU)  EXP=unlearn/tofu/dlm_traj_rmdu ;;
-        DiffusionTrajIProj) EXP=unlearn/tofu/dlm_traj_iproj ;;
+        DiffusionRepelGenDistill) EXP=unlearn/tofu/dlm_repel_gendistill ;;
+        DiffusionADU)       EXP=unlearn/tofu/dlm_adu ;;
         *)                  EXP=unlearn/tofu/dlm ;;
     esac
     [[ -n "$EXP_OVERRIDE" ]] && EXP="$EXP_OVERRIDE"

@@ -1,9 +1,5 @@
 #!/usr/bin/env bash
-# (Re-)evaluate saved TOFU checkpoints with the tofu_dlm suite. Unlearn.sh and
-# retain.sh already evaluate what they train, so this is for filling gaps: the
-# reference models, an arm whose eval crashed, or every arm after an eval-code
-# change. Everything here runs under ONE forget split; to cover all reference
-# models across all three settings in one go use evaluate_retain.sh instead.
+# Evaluate saved TOFU checkpoints for one forget split.
 #
 #   usage: bash scripts/dlm/tofu/evaluate.sh <dream|llada> [gpus] [split] [targets] [hydra overrides...]
 #
@@ -33,17 +29,13 @@ source scripts/dlm/lib.sh
 
 dlm_config "${1:-}" "${2:-}"
 tofu_split "${3:-unlearn90}"
-TARGETS="${4:-all}"
-# Whatever is left after the four positional args is forwarded to every eval.
+targets="${4:-all}"
 if (( $# > 4 )); then shift 4; else shift $#; fi
 
-SUFFIX="${TASK_SUFFIX:-}"
-[[ "$TARGETS" == all ]] && TARGETS=base,retain,methods
+[[ "$targets" == all ]] && targets=base,retain,methods
 
-# Everything runs under the one forget split this invocation was given; see
-# lib.sh (eval planning) for the skip / miss / PARALLEL rules.
 eval_plan_reset
-for target in ${TARGETS//,/ }; do
+for target in ${targets//,/ }; do
     case "$target" in
         base)
             eval_plan_add "tofu_${MODEL}_retain100_${FORGET}" "$(rundir_for retain100)" "$FORGET"
@@ -54,7 +46,7 @@ for target in ${TARGETS//,/ }; do
         methods)
             parse_methods "${METHODS:-}"
             for method in "${METHODS_LIST[@]}"; do
-                task="${FORGET}/tofu_${MODEL}_${method}${SUFFIX}"
+                task="${FORGET}/tofu_${MODEL}_${method}${TASK_SUFFIX:-}"
                 eval_plan_add "$task" "saves/unlearn/${task}" "$FORGET"
             done
             ;;
@@ -64,7 +56,7 @@ for target in ${TARGETS//,/ }; do
     esac
 done
 
-echo "[eval] model=${MODEL} split=${FORGET} targets=${TARGETS}" \
+echo "[eval] model=${MODEL} split=${FORGET} targets=${targets}" \
      "gpus=${EVAL_GPUS:-$GPUS} parallel=${PARALLEL:-0} n=${#PLAN_TASKS[@]}"
 
 fail=0
