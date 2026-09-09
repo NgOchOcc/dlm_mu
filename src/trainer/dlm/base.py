@@ -197,6 +197,12 @@ class DiffusionFinetuneTrainer(FinetuneTrainer):
 
         return input_ids, labels, attention_mask
 
+    def _sample_timesteps(self, batch_size, device):
+        """Sample diffusion times uniformly on the configured interval."""
+        return self.time_epsilon + (1 - self.time_epsilon) * torch.rand(
+            batch_size, device=device
+        )
+
     def _sample_and_denoise(self, model, input_ids, labels, attention_mask=None):
         assert self.processing_class.padding_side == "right"
         if self.eos_pad_to is not None:
@@ -213,9 +219,7 @@ class DiffusionFinetuneTrainer(FinetuneTrainer):
         b, l = input_ids.shape
         maskable_mask = labels != -100  # answer positions only
 
-        t = self.time_epsilon + (1 - self.time_epsilon) * torch.rand(
-            b, device=input_ids.device
-        )
+        t = self._sample_timesteps(b, input_ids.device)
         p_mask = 1.0 - self.scheduler(t).unsqueeze(1).expand(b, l)
         masked_mask = (
             torch.rand((b, l), device=input_ids.device) < p_mask

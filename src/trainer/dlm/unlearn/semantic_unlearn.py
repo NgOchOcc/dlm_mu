@@ -9,10 +9,11 @@ using either an RBF embedding-neighbourhood score or cosine similarity:
     q_cos*(v) propto p_theta0(v | x_f, y_t) exp(-eta (cos(E_v, E_yi) - 1)).
 
 The RBF bandwidth ``h_i`` is the median squared distance from the gold-token
-centre to the complete tokenizer vocabulary, divided by ``log(|V|)``. The
-student and teacher consume the same sampled diffusion state, and training
-minimizes only ``KL(q* || p_theta)`` averaged over masked answer positions.
-There is no retain loss and no denoising cross-entropy term.
+centre to the lexical tokenizer vocabulary, divided by ``log(|V_lex|)``.
+Special/control tokens are excluded from target support and target positions.
+The student and teacher consume the same sampled diffusion state, and training
+minimizes only ``KL(q* || p_theta)`` averaged over masked lexical answer
+positions. There is no retain loss and no denoising cross-entropy term.
 """
 
 import math
@@ -78,9 +79,12 @@ class DiffusionSemanticUnlearn(DiffusionUnlearnTrainer):
         self.center_chunk_size = center_chunk_size
         self.vocab_chunk_size = vocab_chunk_size
         self.vocab_size = len(self.processing_class)
-        if self.vocab_size < 2:
+        lexical_vocab_size = self.vocab_size - len(
+            self._forbidden_unlearning_token_ids()
+        )
+        if lexical_vocab_size < 2:
             raise ValueError(
-                "Semantic_Unlearn requires a tokenizer vocabulary with at least two tokens"
+                "Semantic_Unlearn requires at least two non-special tokenizer tokens"
             )
 
         self.ref_model = self._prepare_ref_model(self.model)
@@ -132,12 +136,13 @@ class DiffusionSemanticUnlearn(DiffusionUnlearnTrainer):
 
         kernels = []
         bandwidths = []
-        log_vocab = math.log(self.vocab_size)
+        allowed = ~self._forbidden_unlearning_vocab_mask(E.device)
+        log_vocab = math.log(int(allowed.sum()))
         fallback_h = 2.0 * self.sigma_fallback**2
         for start in range(0, center_ids.numel(), self.center_chunk_size):
             ids = center_ids[start : start + self.center_chunk_size]
             distances = self._squared_distances(E[ids], E)
-            median_d2 = distances.median(dim=-1).values
+            median_d2 = distances[:, allowed].median(dim=-1).values
             bandwidth = median_d2 / log_vocab
             valid = torch.isfinite(bandwidth) & (bandwidth > 0.0)
             bandwidth = torch.where(
@@ -181,7 +186,7 @@ class DiffusionSemanticUnlearn(DiffusionUnlearnTrainer):
     def _tilted_target(self, log_p0, semantic_scores):
         """Normalize ``log p0 - eta * score`` and detach the resulting target."""
         log_q = log_p0.float() - self.eta * semantic_scores.float()
-        log_q = log_q - torch.logsumexp(log_q, dim=-1, keepdim=True)
+        log_q = self._condition_on_unlearning_vocabulary(log_q)
         q = log_q.exp()
         return log_q.detach(), q.detach()
 
@@ -194,6 +199,8 @@ class DiffusionSemanticUnlearn(DiffusionUnlearnTrainer):
             )
         if center_ids.shape != log_p0.shape[:1]:
             raise ValueError("center_ids must contain one token id per target position")
+        if not bool(self._unlearning_position_mask(center_ids).all()):
+            raise ValueError("center_ids must not contain special/control token ids")
         unique_ids, inverse = torch.unique(center_ids, sorted=True, return_inverse=True)
         scores = self._semantic_scores(unique_ids, E)
         return self._tilted_target(log_p0, scores[inverse])
@@ -213,15 +220,21 @@ class DiffusionSemanticUnlearn(DiffusionUnlearnTrainer):
             scores = self._semantic_scores(unique_ids[start:stop], E)
             position_scores = scores[inverse[position] - start]
 
-            log_p_theta = F.log_softmax(
-                student_logits[position, : self.vocab_size].float(), dim=-1
+            log_p_theta = self._condition_on_unlearning_vocabulary(
+                student_logits[position, : self.vocab_size]
             )
             with torch.no_grad():
-                log_p0 = F.log_softmax(
-                    teacher_logits[position, : self.vocab_size].float(), dim=-1
+                log_p0 = self._condition_on_unlearning_vocabulary(
+                    teacher_logits[position, : self.vocab_size]
                 )
                 log_q, q = self._tilted_target(log_p0, position_scores)
-            losses.append((q * (log_q - log_p_theta)).sum(-1))
+            allowed = ~self._forbidden_unlearning_vocab_mask(log_p_theta.device)
+            losses.append(
+                (
+                    q[..., allowed]
+                    * (log_q[..., allowed] - log_p_theta[..., allowed])
+                ).sum(-1)
+            )
             positions.append(position)
 
         position = torch.cat(positions)
@@ -249,7 +262,9 @@ class DiffusionSemanticUnlearn(DiffusionUnlearnTrainer):
             )
             E = self._gather_E()
 
-        masked = art["masked_mask"]
+        masked = art["masked_mask"] & self._unlearning_position_mask(
+            art["input_ids"]
+        )
         center_ids = art["input_ids"][masked]
         masked_kl = self._masked_kl(
             art["logits"][masked], teacher.logits[masked], center_ids, E

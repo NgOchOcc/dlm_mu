@@ -9,9 +9,11 @@ that distribution: the fact survives in representation space even though the gol
 is demoted at the output.
 
 This variant instead fits the student at ``A_hat`` to the **uniform distribution**
-``u = 1/V`` over the whole vocabulary, decoupled from the teacher entirely:
+``u = 1/|V_lex|`` over the inherited non-special vocabulary support, decoupled
+from the teacher entirely:
 
-    L_f = KL( u || p_theta(.|x, y_M) ) = -log V - mean_v log p_theta(v)   on A_hat.
+    L_f = KL( u || p_theta(.|x, y_M) )
+        = -log |V_lex| - mean_{v in V_lex} log p_theta(v)   on A_hat.
 
 The student is told only "every token is equally likely here", so there is no incentive
 to retain the discriminative structure that pins down the concept -- a strictly less
@@ -45,33 +47,40 @@ class DiffusionUTSD(DiffusionSimpleTSD):
         self.mix_beta = float(mix_beta)
 
     def _forget_kl(self, log_p, log_p0, y_m, ctx):
-        """Forget target = uniform ``u = 1/V`` (``mix_beta=1``), or the probability-space
-        mix ``m = (1 - mix_beta) q + mix_beta u`` with the edited teacher ``q`` otherwise.
+        """Forget target = uniform ``u = 1/|V_lex|`` (``mix_beta=1``), or the
+        probability-space mix ``m = (1 - mix_beta) q + mix_beta u`` with the edited
+        teacher ``q`` otherwise.
 
         Returns ``(kl_f, removed)``, each ``[b, l]``. ``removed`` reports the teacher's raw
         gold mass above the target's gold mass -- the mass this objective erases.
         """
         input_ids = ctx["input_ids"]
         gold = input_ids.unsqueeze(-1)
-        V = log_p.shape[-1]
+        allowed = ~self._forbidden_unlearning_vocab_mask(log_p.device)
+        V = int(allowed.sum())
         u = 1.0 / V
-        p0_gold = log_p0.gather(-1, gold).squeeze(-1).exp()
+        log_p_forget = self._condition_on_unlearning_vocabulary(log_p)
+        log_p0_forget = self._condition_on_unlearning_vocabulary(log_p0)
+        p0_gold = log_p0_forget.gather(-1, gold).squeeze(-1).exp()
 
         if self.mix_beta >= 1.0:
             # Pure uniform: KL(u || p_theta) = sum_v u (log u - log p) = -log V - mean_v log p.
             # No teacher term -> the target is fully decoupled from p0.
-            kl_f = -math.log(V) - log_p.mean(dim=-1)
-            gold_target = p0_gold.new_full(p0_gold.shape, u)
+            kl_f = -math.log(V) - log_p_forget[..., allowed].mean(dim=-1)
+            gold_target = allowed[input_ids].to(p0_gold.dtype) * u
         else:
             # Edited teacher q (demote gold, and belief top-K, then renormalise), as in the
             # base, mixed with uniform in probability space: m = (1 - beta) q + beta u.
-            demote = self._demote_mask(log_p0, input_ids)
-            log_q = log_p0.masked_fill(demote, float("-inf"))
+            demote = self._demote_mask(log_p0_forget, input_ids)
+            log_q = log_p0_forget.masked_fill(demote, float("-inf"))
             log_q = log_q - torch.logsumexp(log_q, dim=-1, keepdim=True)
             q = log_q.exp()  # zero on the demoted set
-            m = (1.0 - self.mix_beta) * q + self.mix_beta * u
-            log_m = m.clamp_min(1e-12).log()
-            kl_f = (m * (log_m - log_p)).sum(-1)
+            uniform = allowed.to(q.dtype) * u
+            m = (1.0 - self.mix_beta) * q + self.mix_beta * uniform
+            support = m > 0
+            log_m = torch.where(support, m.clamp_min(1e-12).log(), torch.zeros_like(m))
+            safe_log_p = log_p_forget.masked_fill(~support, 0.0)
+            kl_f = (m * (log_m - safe_log_p)).sum(-1)
             gold_target = m.gather(-1, gold).squeeze(-1)
 
         removed = (p0_gold - gold_target).clamp_min(0.0)

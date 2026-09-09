@@ -180,6 +180,30 @@ are not applied to this KL, although the scheduler still determines $y_t$.
 
 # Part II: Implementation
 
+## Special-token exclusion
+
+Semantic_Unlearn excludes sequence-control tokens from the unlearning problem.
+The forbidden set $\mathcal S$ is the union of the tokenizer's declared special
+IDs and the assistant-turn terminator derived from its chat template. It therefore
+includes EOT/EOS, PAD, BOS, and MASK when defined, including Dream/LLaDA turn-end
+tokens that may not appear in `all_special_ids`.
+
+For each lexical forget position, teacher, target, and student probabilities are
+renormalized on
+$\mathcal V_{\mathrm{lex}}=\mathcal V\setminus\mathcal S$:
+
+$$
+q_{i,\mathrm{lex}}^*(v)
+=
+\frac{\mathbf 1[v\notin\mathcal S]q_i^*(v)}
+{\sum_{u\notin\mathcal S}q_i^*(u)}.
+$$
+
+The RBF median bandwidth and its $\log|\mathcal V_{\mathrm{lex}}|$ divisor also
+use only lexical vocabulary rows. A masked position whose clean center token is
+special/control is skipped, so the method neither repels nor semantically tilts
+EOT, EOS, PAD, BOS, or MASK.
+
 ## 5. Selecting a target mode
 
 The trainer arguments live in
@@ -214,9 +238,11 @@ Input: forget batch, student, frozen teacher, frozen teacher embeddings E
 4. For each center chunk:
    a. RBF mode: compute full-vocabulary distances, bandwidth, and RBF scores.
    b. Cosine mode: normalize embeddings and compute shifted-cosine scores.
-5. Form log q = log p_theta0 - eta * score and normalize with logsumexp.
-6. Compute KL(q || p_theta) at masked answer positions.
-7. Average within each active example, then across examples; update only theta.
+5. Exclude special/control IDs from the teacher and student support.
+6. Form log q = log p_theta0 - eta * score and normalize with logsumexp over
+   lexical tokens.
+7. Compute KL(q || p_theta) at masked lexical answer positions.
+8. Average within each active example, then across examples; update only theta.
 ```
 
 The code reuses
@@ -225,8 +251,9 @@ including LLaDA/Dream preprocessing and right-shift behavior.
 
 ## 7. Numerical and distributed behavior
 
-- Teacher, target, and student distributions are restricted to
-  `len(tokenizer)`, excluding padded LM-head-only rows.
+- Teacher, target, and student distributions first drop padded LM-head-only rows,
+  then exclude special/control IDs and normalize over the remaining tokenizer
+  vocabulary.
 - Log-softmax, semantic-score construction, normalization, and KL accumulation
   use float32 even when the model uses bfloat16.
 - Cosines are clamped to $[-1,1]$ after the normalized matrix product to remove

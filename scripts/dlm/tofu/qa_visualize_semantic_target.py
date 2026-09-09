@@ -11,9 +11,10 @@ with the selected production Semantic_Unlearn target
 where ``s(v)`` is either the RBF kernel or ``cos(E_v, E_gold) - 1``. The
 production trainer's own score and target methods construct the distribution.
 The model's frozen input embeddings supply ``E`` and both logits and embeddings
-are restricted to ``len(tokenizer)`` exactly as in training. A self-contained
-HTML report, compact JSONL audit record, and summary JSON are written under the
-same output stem.
+are restricted to ``len(tokenizer)``; special/control ids are then removed and
+the remaining distribution is renormalized exactly as in training. A
+self-contained HTML report, compact JSONL audit record, and summary JSON are
+written under the same output stem.
 """
 
 import argparse
@@ -48,8 +49,22 @@ def _load_semantic_unlearn_class():
     module_path = _REPO / "src" / "trainer" / "dlm" / "unlearn" / "semantic_unlearn.py"
     base_name = "trainer.dlm.unlearn.base"
     saved_base = sys.modules.get(base_name)
+
+    class ProbeBase:
+        def _forbidden_unlearning_vocab_mask(self, device):
+            return self._forbidden_unlearning_vocab_mask_cache.to(device)
+
+        def _condition_on_unlearning_vocabulary(self, log_scores):
+            forbidden = self._forbidden_unlearning_vocab_mask(log_scores.device)
+            conditioned = log_scores.float().masked_fill(forbidden, float("-inf"))
+            return conditioned - torch.logsumexp(conditioned, dim=-1, keepdim=True)
+
+        def _unlearning_position_mask(self, input_ids):
+            forbidden = self._forbidden_unlearning_vocab_mask(input_ids.device)
+            return ~forbidden[input_ids]
+
     shell = types.ModuleType(base_name)
-    shell.DiffusionUnlearnTrainer = type("DiffusionUnlearnTrainer", (), {})
+    shell.DiffusionUnlearnTrainer = ProbeBase
     sys.modules[base_name] = shell
     try:
         spec = importlib.util.spec_from_file_location(module_name, module_path)
@@ -185,6 +200,7 @@ def _load_dlm(
 
 def _build_probe(
     vocab_size: int,
+    forbidden_ids: set,
     eta: float,
     target_mode: str,
     sigma_fallback: float,
@@ -205,6 +221,12 @@ def _build_probe(
     probe.sigma_fallback = float(sigma_fallback)
     probe.center_chunk_size = _positive_integer(center_chunk_size, "--center-chunk-size")
     probe.vocab_chunk_size = _positive_integer(vocab_chunk_size, "--vocab-chunk-size")
+    forbidden = torch.zeros(probe.vocab_size, dtype=torch.bool)
+    if forbidden_ids:
+        forbidden[list(forbidden_ids)] = True
+    if bool(forbidden.all()):
+        raise ValueError("unlearning requires at least one non-special tokenizer token")
+    probe._forbidden_unlearning_vocab_mask_cache = forbidden
     return probe
 
 
@@ -322,7 +344,8 @@ def _semantic_kernels_with_fallbacks(
 
     def diagnostic_squared_distances(self, centers, embeddings):
         distances = production_squared_distances(self, centers, embeddings)
-        median_d2 = distances.median(dim=-1).values
+        allowed = ~self._forbidden_unlearning_vocab_mask(distances.device)
+        median_d2 = distances[:, allowed].median(dim=-1).values
         valid_chunks.append(torch.isfinite(median_d2) & (median_d2 > 0.0))
         return distances
 
@@ -398,17 +421,36 @@ def _analyze_example(
     # Re-normalize after dropping any padded LM-head rows, matching training exactly.
     log_p0 = full_log_probs[:, :vocab_size].float()
     log_p0 = log_p0 - torch.logsumexp(log_p0, dim=-1, keepdim=True)
-    raw_probabilities = log_p0.exp()
 
     E = _embedding_matrix(model, vocab_size)
+    forbidden_ids = {
+        int(token_id)
+        for token_id in (
+            list(getattr(tokenizer, "all_special_ids", None) or [])
+            + list(hidden_terminal_ids)
+        )
+        if token_id is not None and 0 <= int(token_id) < vocab_size
+    }
+    for name in (
+        "bos_token_id",
+        "eos_token_id",
+        "pad_token_id",
+        "mask_token_id",
+    ):
+        token_id = getattr(tokenizer, name, None)
+        if token_id is not None and 0 <= int(token_id) < vocab_size:
+            forbidden_ids.add(int(token_id))
     probe = _build_probe(
         vocab_size,
+        forbidden_ids,
         etas[0],
         target_mode,
         sigma_fallback,
         center_chunk_size,
         vocab_chunk_size,
     )
+    log_p0 = probe._condition_on_unlearning_vocabulary(log_p0)
+    raw_probabilities = log_p0.exp()
     unique_ids, inverse = torch.unique(gold_ids, sorted=True, return_inverse=True)
     normalized_embeddings = F.normalize(E.float(), dim=-1)
     cosine_similarities = (

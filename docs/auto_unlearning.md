@@ -144,23 +144,64 @@ optimization problem.
 
 # Part II: Implementation
 
+## Special-token exclusion
+
+Auto Unlearning does not treat sequence-control tokens as semantic alternatives
+at ordinary response positions. The implementation defines the forbidden set
+
+$$
+\mathcal S
+=\{\text{all tokenizer-declared special-token IDs}\}
+\cup\{\text{derived assistant-turn terminator}\}.
+$$
+
+Thus $\mathcal S$ includes EOT/EOS, PAD, BOS, and MASK whenever the tokenizer
+defines them. Deriving the assistant-turn terminator separately is necessary
+because Dream's `im_end` and LLaDA's `eot_id` are not always reported by
+`all_special_ids`.
+
+At a masked response position whose clean target is lexical, the conditional
+teacher, prompt-masked teacher, forget target, and student distribution are all
+conditioned on $\mathcal V_{\mathrm{lex}}=\mathcal V\setminus\mathcal S$:
+
+$$
+\widetilde r(v)=
+\begin{cases}
+r(v), & v\notin\mathcal S,\\
+0, & v\in\mathcal S,
+\end{cases}
+\qquad
+r_{\mathrm{lex}}(v)=
+\frac{\widetilde r(v)}{\sum_{u\notin\mathcal S}\widetilde r(u)}.
+$$
+
+The reverse KL therefore compares the student and target on the same lexical
+support; it never evaluates positive student mass against a zero-probability
+special-token target. If the clean token at a masked response position is itself
+in $\mathcal S$, that position is omitted from the forget loss. This preserves
+the sequence-format role of EOT/EOS rather than trying to unlearn it.
+
 ## 6. Per-batch execution
 
 For each forget batch, the trainer:
 
-1. Samples one diffusion time per example and masks answer positions, producing
-   $y_t$ and $\mathcal M_t$.
+1. Samples one diffusion time per example from $t\sim\operatorname{Beta}(3,1)$,
+   scaled to $[\epsilon,1)$, and masks answer positions, producing $y_t$ and
+   $\mathcal M_t$. This emphasizes high-noise states while retaining support
+   across the full training-time interval.
 2. Runs the conditional student on $(x,y_t)$.
 3. Runs the frozen teacher on the same $(x,y_t)$ to obtain
    $\log p_{\mathrm{cond}}$.
 4. Replaces attended, non-answer, non-padding prompt tokens with the model's mask
    token and runs the same frozen teacher to obtain $\log p_{\mathrm{uncond}}$.
-5. Clamps $\log p_{\mathrm{cond}}-\log p_{\mathrm{uncond}}$ at zero, subtracts
+5. Removes the forbidden special-token support and renormalizes both teacher
+   distributions over lexical tokens.
+6. Clamps $\log p_{\mathrm{cond}}-\log p_{\mathrm{uncond}}$ at zero, subtracts
    the resulting suppression score from $\log p_{\mathrm{cond}}$, and
    constructs $\log q^{\mathrm{forget}}$ in float32 with `logsumexp`
-   normalization.
-6. Computes reverse KL at masked answer positions and averages first within each
-   active example, then across examples.
+   normalization over the same lexical support.
+7. Computes reverse KL at masked lexical answer positions and averages first
+   within each active example, then across examples.
 
 There is one student forward and two frozen-teacher forwards per batch. Teacher
 and target construction run without gradients.
@@ -169,12 +210,16 @@ and target construction run without gradients.
 
 - `lam` is validated before trainer setup and must be finite with
   `0 <= lam < 1`.
-- Student, teacher, and target distributions are normalized over
-  `len(tokenizer)`, excluding padded LM-head-only rows.
+- Student, teacher, and target distributions first drop padded LM-head-only rows,
+  then exclude special/control IDs and normalize over the remaining tokenizer
+  vocabulary.
 - Log probabilities, target construction, and KL accumulation use float32.
 - The target is detached; gradients flow only through the conditional student.
 - Conditional and prompt-masked teacher passes share the exact sampled answer
   mask, revealed answer tokens, and attention mask.
+- Auto Unlearning samples $t\sim\operatorname{Beta}(3,1)$ rather than uniformly;
+  with the linear scheduler, its expected masking rate is approximately $0.75$
+  (up to the small `time_epsilon` rescaling).
 - Scheduler/CART weights are not applied to the KL. The configured scheduler is
   still used to sample $y_t$.
 - No retain dataset, retain loss, or ordinary denoising NLL is used.

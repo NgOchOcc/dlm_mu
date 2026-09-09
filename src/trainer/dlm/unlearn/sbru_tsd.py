@@ -38,6 +38,9 @@ selection / cover-masking / balanced-weighting / multi-draw machinery is inherit
 unchanged. Only ``_forget_kl`` is overridden; the unembedding ``E`` is gathered once per
 batch in ``_forget_context`` (detached fixed geometry, ZeRO-3 safe).
 
+Special/control tokens inherit SimpleTSD's exclusion from forget positions and are also
+removed from SBRU's soft embeddings, promptless anchors, and semantic-ball neighbours.
+
 Unlike ``DiffusionSBRU`` (which subclasses ``DiffusionGradDiff`` and relies on a retain
 NLL / the promptless anchor alone for utility -- measured to collapse retain-free on
 LLaDA), here the SimpleTSD self-distillation on ``R`` supplies retain-free utility
@@ -92,6 +95,14 @@ class DiffusionSBRUTSD(DiffusionSimpleTSD):
         self.gamma_anc = float(gamma_anc)
         self.centre_mode = centre_mode
         self.ball_k = int(ball_k)
+        lexical_vocab_size = self.vocab_size - len(
+            self._forbidden_unlearning_token_ids()
+        )
+        if self.ball_k > lexical_vocab_size:
+            raise ValueError(
+                f"ball_k={self.ball_k} exceeds lexical vocabulary size "
+                f"{lexical_vocab_size}"
+            )
 
     # -- geometry helpers (ported from DiffusionSBRU) ----------------------------
     def _gather_E(self, model):
@@ -147,6 +158,7 @@ class DiffusionSBRUTSD(DiffusionSimpleTSD):
         En = torch.nn.functional.normalize(E.float(), dim=-1)
         q = torch.nn.functional.normalize(gold_emb.reshape(-1, d).float(), dim=-1)
         sims = q @ En.T  # [b*l, V]
+        sims[:, self._forbidden_unlearning_vocab_mask(sims.device)] = float("-inf")
         nn = sims.topk(self.ball_k, dim=-1).indices  # [b*l, k]
         centre = E[nn].float().mean(dim=1)  # [b*l, d]
         return centre.reshape(b, l, d)
@@ -155,6 +167,7 @@ class DiffusionSBRUTSD(DiffusionSimpleTSD):
     def _teacher_soft_emb(self, y, attention_mask, E):
         """Frozen-teacher soft embedding on ``y`` (detached, fixed geometry target)."""
         log_p0 = self._teacher_log_probs(y, attention_mask)
+        log_p0 = self._condition_on_unlearning_vocabulary(log_p0)
         return self._soft_emb(log_p0, E).float()
 
     # -- overridden forget objective ---------------------------------------------
@@ -172,7 +185,8 @@ class DiffusionSBRUTSD(DiffusionSimpleTSD):
         answer_mask = ctx["answer_mask"]
         E = ctx["E"]  # [V, d], detached fixed geometry, gathered once per batch
 
-        e_hat = self._soft_emb(log_p, E).float()  # [b, l, d], differentiable
+        log_p_forget = self._condition_on_unlearning_vocabulary(log_p)
+        e_hat = self._soft_emb(log_p_forget, E).float()  # [b, l, d], differentiable
 
         # Forget-region centre c.
         if self.centre_mode == "gold":

@@ -120,9 +120,9 @@ Alternative selection rules are available through Hydra overrides:
 - a data batch may provide an explicit `answer_mask`, bypassing PCSS.
 
 Implementation:
-[`_select_forget_positions`](../src/trainer/dlm/unlearn/simple_tsd.py#L153-L185),
-[`_threshold_scores`](../src/trainer/dlm/unlearn/simple_tsd.py#L207-L223), and
-[`_question_overlap_mask`](../src/trainer/dlm/unlearn/simple_tsd.py#L225-L249).
+[`_select_forget_positions`](../src/trainer/dlm/unlearn/simple_tsd.py#L163-L200),
+[`_threshold_scores`](../src/trainer/dlm/unlearn/simple_tsd.py#L221-L237), and
+[`_question_overlap_mask`](../src/trainer/dlm/unlearn/simple_tsd.py#L239-L263).
 
 ### 2.3 Stage 2: sample denoising states
 
@@ -146,7 +146,7 @@ trajectory. It gives high-PCSS positions more frequent coverage, but it does
 not guarantee that every selected position is masked in a batch.
 
 Implementation:
-[`_sample_masks_cover`](../src/trainer/dlm/unlearn/simple_tsd.py#L299-L348).
+[`_sample_masks_cover`](../src/trainer/dlm/unlearn/simple_tsd.py#L313-L362).
 The alternative `mask_mode=stratified` samples uniformly from answer positions
 and forces at least one selected position into a draw.
 
@@ -218,9 +218,9 @@ $h=2\sigma_{\mathrm{fallback}}^2$. The anchor always uses the fixed
 `SIGMA_ANC=1.0` bandwidth.
 
 Implementation:
-[`DiffusionSBRUTSD._forget_kl`](../src/trainer/dlm/unlearn/sbru_tsd.py#L161-L220)
+[`DiffusionSBRUTSD._forget_kl`](../src/trainer/dlm/unlearn/sbru_tsd.py#L174-L234)
 and
-[`_median_bandwidth`](../src/trainer/dlm/unlearn/sbru_tsd.py#L125-L138).
+[`_median_bandwidth`](../src/trainer/dlm/unlearn/sbru_tsd.py#L137-L150).
 
 ### 2.5 Retain-free self-distillation
 
@@ -255,7 +255,7 @@ has no effect on the external retain set; retain behavior is measured after
 training by the evaluation suite.
 
 Implementation:
-[`_combine_draw`](../src/trainer/dlm/unlearn/simple_tsd.py#L475-L555).
+[`_combine_draw`](../src/trainer/dlm/unlearn/simple_tsd.py#L500-L580).
 
 ### 2.6 Multi-draw optimization
 
@@ -267,7 +267,7 @@ synchronization only when the outer Hugging Face gradient-accumulation step is
 at its normal synchronization boundary.
 
 Implementation:
-[`training_step`](../src/trainer/dlm/unlearn/simple_tsd.py#L575-L618).
+[`training_step`](../src/trainer/dlm/unlearn/simple_tsd.py#L600-L643).
 
 ### 2.7 Algorithm summary
 
@@ -313,6 +313,26 @@ does and how it reaches the SBRU-TSD implementation.
 > The method itself is implemented by
 > [`DiffusionSBRUTSD`](../src/trainer/dlm/unlearn/sbru_tsd.py), which subclasses
 > [`DiffusionSimpleTSD`](../src/trainer/dlm/unlearn/simple_tsd.py).
+
+## Special-token exclusion
+
+SBRU-TSD inherits SimpleTSD's explicit forbidden set: all tokenizer-declared
+special IDs plus the assistant-turn terminator derived from the chat template.
+This includes EOT/EOS, PAD, BOS, and MASK whenever defined, even when a
+Dream/LLaDA turn-end token is absent from `all_special_ids`.
+
+Positions whose clean answer token is in this set cannot enter the selected
+forget set. At lexical forget positions, special-token probabilities are set to
+zero and the student, frozen-teacher center, and prompt-masked anchor
+distributions are renormalized over
+$\mathcal V_{\mathrm{lex}}=\mathcal V\setminus\mathcal S$. Special rows are also
+excluded from the `ball_k` nearest-neighbour search. Consequently they cannot
+move the soft embedding, anchor, semantic-ball center, or repulsion loss.
+
+This restriction applies only to the forget branch. The inherited
+self-distillation branch retains its full-vocabulary teacher distribution, so
+valid EOT/EOS behavior is preserved as sequence structure rather than treated as
+content to erase.
 
 ## 3. What `run_sbrutsd.sh` does
 

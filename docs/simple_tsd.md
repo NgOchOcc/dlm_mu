@@ -156,7 +156,7 @@ A high score means that seeing the question substantially increases the teacher'
 
 The current implementation estimates the expectation with `sel_mc` partial-mask draws. Partial masking is intentional: under a fully masked answer, the promptless teacher can become nearly uniform, causing almost every answer token to appear prompt-dependent.
 
-The selection implementation is in [`_select_forget_positions`](../src/trainer/dlm/unlearn/simple_tsd.py#L153-L185).
+The selection implementation is in [`_select_forget_positions`](../src/trainer/dlm/unlearn/simple_tsd.py#L163-L200).
 
 ### 5.2 Convert scores into a selected set
 
@@ -174,15 +174,15 @@ Three rules are supported:
 - **`topk`** — selects the configured top fraction of answer positions; and
 - **`tau`** — selects positions satisfying $s_i\geq\tau$.
 
-Otsu and threshold selection are implemented in [`_otsu_threshold` and `_threshold_scores`](../src/trainer/dlm/unlearn/simple_tsd.py#L187-L223).
+Otsu and threshold selection are implemented in [`_otsu_threshold` and `_threshold_scores`](../src/trainer/dlm/unlearn/simple_tsd.py#L202-L237).
 
-When `drop_question_overlap=true`, answer words that merely repeat words already present in the question are removed from $\widehat{\mathcal A}$. The prompt already exposes those surface forms, so treating them as hidden information can add unnecessary forgetting pressure. See [`_question_overlap_mask`](../src/trainer/dlm/unlearn/simple_tsd.py#L225-L249).
+When `drop_question_overlap=true`, answer words that merely repeat words already present in the question are removed from $\widehat{\mathcal A}$. The prompt already exposes those surface forms, so treating them as hidden information can add unnecessary forgetting pressure. See [`_question_overlap_mask`](../src/trainer/dlm/unlearn/simple_tsd.py#L239-L263).
 
 ### 5.3 Manual-span option
 
 If token-level forget spans are already known, selection can be skipped. A supplied answer mask is used directly as $\widehat{\mathcal A}$, intersected with valid answer positions.
 
-This path is implemented in [`_forget_context`](../src/trainer/dlm/unlearn/simple_tsd.py#L398-L442).
+This path is implemented in [`_forget_context`](../src/trainer/dlm/unlearn/simple_tsd.py#L418-L467).
 
 ### 5.4 Selection pseudocode
 
@@ -226,7 +226,7 @@ The implementation supports two masking modes:
 - **`stratified`** — samples answer positions and forces at least one selected forget position into each active draw;
 - **`cover`** — samples a diffusion mask budget, splits that budget between selected and non-selected positions, and samples selected positions with probabilities informed by their PCSS scores.
 
-The masking implementations are [`_sample_mask`](../src/trainer/dlm/unlearn/simple_tsd.py#L251-L274) and [`_sample_masks_cover`](../src/trainer/dlm/unlearn/simple_tsd.py#L299-L348).
+The masking implementations are [`_sample_mask`](../src/trainer/dlm/unlearn/simple_tsd.py#L265-L288) and [`_sample_masks_cover`](../src/trainer/dlm/unlearn/simple_tsd.py#L313-L362).
 
 ### 6.2 Split the masked positions
 
@@ -275,7 +275,7 @@ The implementation performs the relevant probability calculations in float32 and
 
 With `demotion="belief"`, the method additionally removes the teacher's top `belief_top_k` predictions. This is a stronger variant intended to suppress a local belief set rather than only the exact gold token.
 
-Target construction is implemented in [`_demote_mask` and `_forget_kl`](../src/trainer/dlm/unlearn/simple_tsd.py#L350-L396).
+Target construction is implemented in [`_demote_mask` and `_forget_kl`](../src/trainer/dlm/unlearn/simple_tsd.py#L364-L416).
 
 ### 6.4 Forget loss
 
@@ -335,13 +335,13 @@ $$
 
 The fallback avoids shrinking the forget objective merely because a sampled state contains no self-distillation positions.
 
-The reduction is implemented in [`_combine_draw`](../src/trainer/dlm/unlearn/simple_tsd.py#L475-L555).
+The reduction is implemented in [`_combine_draw`](../src/trainer/dlm/unlearn/simple_tsd.py#L500-L580).
 
 ### 6.7 Multiple mask draws
 
 The configuration can use `loss_mc > 1` independent mask draws for the same selected set $\widehat{\mathcal A}$. Their losses are averaged to reduce pathwise gradient variance.
 
-During training, the code backpropagates each draw before creating the next student graph. This keeps peak activation memory close to one draw under DeepSpeed ZeRO-3. See [`compute_loss` and `training_step`](../src/trainer/dlm/unlearn/simple_tsd.py#L557-L618).
+During training, the code backpropagates each draw before creating the next student graph. This keeps peak activation memory close to one draw under DeepSpeed ZeRO-3. See [`compute_loss` and `training_step`](../src/trainer/dlm/unlearn/simple_tsd.py#L582-L643).
 
 ### 6.8 Training pseudocode
 
@@ -408,6 +408,33 @@ The implementation is in
 [`src/trainer/dlm/unlearn/simple_tsd.py`](../src/trainer/dlm/unlearn/simple_tsd.py),
 and its default configuration is in
 [`configs/trainer/DiffusionSimpleTSD.yaml`](../configs/trainer/DiffusionSimpleTSD.yaml).
+
+## Special-token exclusion
+
+SimpleTSD's forget branch operates only on lexical tokens. Its forbidden set
+$\mathcal S$ contains every tokenizer-declared special ID plus the assistant-turn
+terminator derived from the chat template. This explicitly covers EOT/EOS, PAD,
+BOS, and MASK, including Dream/LLaDA turn-end IDs that a tokenizer may omit from
+`all_special_ids`.
+
+PCSS cannot select a position whose clean answer token is in $\mathcal S$. At a
+selected lexical position, the student and edited-teacher distributions are
+conditioned on $\mathcal V_{\mathrm{lex}}=\mathcal V\setminus\mathcal S$ before
+gold/belief demotion and renormalization. Equivalently, each forget target first
+sets
+
+$$
+\widetilde q(v)=0\quad(v\in\mathcal S),
+\qquad
+q_{\mathrm{lex}}(v)=
+\frac{\widetilde q(v)}{\sum_{u\notin\mathcal S}\widetilde q(u)}.
+$$
+
+The same rule is inherited by the QMask and UTSD variants: QMask conditions its
+prompt-masked teacher on lexical support, while UTSD is uniform over
+$\mathcal V_{\mathrm{lex}}$, not the full vocabulary. Special-token answer
+positions remain eligible for the non-forget self-distillation branch, whose
+full-vocabulary teacher target preserves sequence-format behavior.
 
 ## 8. Current configuration
 

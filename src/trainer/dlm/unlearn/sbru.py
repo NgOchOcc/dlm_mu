@@ -38,7 +38,9 @@ gradient flows only into the policy distribution, never into the embeddings
 themselves (which would admit the degenerate "just move the embeddings"
 solution). Under ZeRO-3 the unembedding parameter is sharded, so it is gathered
 with ``deepspeed.zero.GatheredParameters`` each step. The retain cross-entropy
-still trains ``E`` normally through the real LM head.
+still trains ``E`` normally through the real LM head. Special/control tokens are
+excluded from forget positions, soft embeddings, anchors, and ball neighbours;
+retain NLL continues to preserve them normally.
 """
 
 import torch
@@ -80,6 +82,14 @@ class DiffusionSBRU(DiffusionGradDiff):
         self.mask_id = self.processing_class.mask_token_id
         self.pad_id = self.processing_class.pad_token_id
         self.vocab_size = len(self.processing_class)
+        lexical_vocab_size = self.vocab_size - len(
+            self._forbidden_unlearning_token_ids()
+        )
+        if self.ball_k > lexical_vocab_size:
+            raise ValueError(
+                f"ball_k={self.ball_k} exceeds lexical vocabulary size "
+                f"{lexical_vocab_size}"
+            )
         # Frozen teacher for the promptless anchor (and the ref_soft centre).
         self.ref_model = self._prepare_ref_model(self.model)
         for p in self.ref_model.parameters():
@@ -133,6 +143,7 @@ class DiffusionSBRU(DiffusionGradDiff):
     def _teacher_soft_emb(self, y, attention_mask, E):
         out = self.ref_model(input_ids=y, attention_mask=attention_mask)
         log_p0 = self._log_probs(self._postprocess_outputs(out).logits)
+        log_p0 = self._condition_on_unlearning_vocabulary(log_p0)
         return self._soft_emb(log_p0, E)
 
     @torch.no_grad()
@@ -149,6 +160,7 @@ class DiffusionSBRU(DiffusionGradDiff):
         En = torch.nn.functional.normalize(E.float(), dim=-1)
         q = torch.nn.functional.normalize(gold_emb.reshape(-1, d).float(), dim=-1)
         sims = q @ En.T  # [b*l, V]
+        sims[:, self._forbidden_unlearning_vocab_mask(sims.device)] = float("-inf")
         nn = sims.topk(self.ball_k, dim=-1).indices  # [b*l, k]
         centre = E[nn].float().mean(dim=1)  # [b*l, d]
         return centre.reshape(b, l, d)
@@ -164,11 +176,13 @@ class DiffusionSBRU(DiffusionGradDiff):
             forget["labels"],
             forget.get("attention_mask", None),
         )
-        log_p = self._log_probs(art["logits"])  # [b, l, V], differentiable
+        log_p = self._condition_on_unlearning_vocabulary(
+            self._log_probs(art["logits"])
+        )
         input_ids = art["input_ids"]
         noised = art["noised_input_ids"]
         attn = art["attention_mask"]
-        masked = art["masked_mask"]
+        masked = art["masked_mask"] & self._unlearning_position_mask(input_ids)
         maskable = art["maskable_mask"]
         loss_weights = art["loss_weights"]
 

@@ -11,8 +11,9 @@ replaced by mask tokens. For ``0 <= lam < 1``, set
 
 The conditional distribution remains the target baseline, preserving the
 teacher's normal behavior except where the prompt-added score applies selective
-suppression. The conditional student is trained with ``KL(p_theta || q_forget)``
-at masked answer positions. The method uses no retain examples or denoising NLL.
+suppression. Special/control tokens are excluded from the forget support. The
+conditional student is trained with ``KL(p_theta || q_forget)`` at masked lexical
+answer positions. The method uses no retain examples or denoising NLL.
 """
 
 import math
@@ -34,14 +35,23 @@ class DiffusionAutoUnlearning(DiffusionUnlearnTrainer):
         self.mask_id = self.processing_class.mask_token_id
         self.pad_id = self.processing_class.pad_token_id
         self.vocab_size = len(self.processing_class)
-        if self.vocab_size < 2:
+        lexical_vocab_size = self.vocab_size - len(
+            self._forbidden_unlearning_token_ids()
+        )
+        if lexical_vocab_size < 1:
             raise ValueError(
-                "Auto Unlearning requires a tokenizer vocabulary with at least two tokens"
+                "Auto Unlearning requires at least one non-special tokenizer token"
             )
 
         self.ref_model = self._prepare_ref_model(self.model)
         for parameter in self.ref_model.parameters():
             parameter.requires_grad_(False)
+
+    def _sample_timesteps(self, batch_size, device):
+        """Sample ``Beta(3, 1)`` times, scaled to ``[time_epsilon, 1)``."""
+        # The Beta(3, 1) CDF is x^3, so inverse-CDF sampling is U^(1/3).
+        unit_t = torch.rand(batch_size, device=device).pow(1.0 / 3.0)
+        return self.time_epsilon + (1 - self.time_epsilon) * unit_t
 
     def _prompt_mask(self, input_ids, answer_mask, attention_mask):
         """Attended, non-answer, non-padding positions replaced for ``p_uncond``."""
@@ -59,19 +69,26 @@ class DiffusionAutoUnlearning(DiffusionUnlearnTrainer):
     @torch.no_grad()
     def _forget_target(self, log_p_cond, log_p_uncond):
         """Return the detached conditional target with prompt-added suppression."""
-        log_p_cond = log_p_cond.float()
-        prompt_added = (log_p_cond - log_p_uncond.float()).clamp_min(0.0)
-        target_logits = log_p_cond - self.beta * prompt_added
-        log_q = target_logits - torch.logsumexp(
-            target_logits, dim=-1, keepdim=True
+        log_p_cond = self._condition_on_unlearning_vocabulary(log_p_cond)
+        log_p_uncond = self._condition_on_unlearning_vocabulary(log_p_uncond)
+        allowed = ~self._forbidden_unlearning_vocab_mask(log_p_cond.device)
+        prompt_added = (
+            log_p_cond[..., allowed] - log_p_uncond[..., allowed]
+        ).clamp_min(0.0)
+        target_logits = log_p_cond.clone()
+        target_logits[..., allowed] = (
+            log_p_cond[..., allowed] - self.beta * prompt_added
         )
+        log_q = self._condition_on_unlearning_vocabulary(target_logits)
         return log_q.detach(), log_q.exp().detach()
 
-    @staticmethod
-    def _reverse_kl(log_p, log_q):
-        """Tokenwise ``KL(p || q)`` over the vocabulary dimension."""
+    def _reverse_kl(self, log_p, log_q):
+        """Tokenwise ``KL(p || q)`` over the lexical vocabulary support."""
         p = log_p.exp()
-        return (p * (log_p - log_q)).sum(-1)
+        allowed = ~self._forbidden_unlearning_vocab_mask(log_p.device)
+        return (
+            p[..., allowed] * (log_p[..., allowed] - log_q[..., allowed])
+        ).sum(-1)
 
     def compute_loss(
         self, model, inputs, return_outputs=False, num_items_in_batch=None
@@ -88,8 +105,10 @@ class DiffusionAutoUnlearning(DiffusionUnlearnTrainer):
         noised = art["noised_input_ids"]
         attention_mask = art["attention_mask"]
         answer_mask = art["maskable_mask"]
-        masked = art["masked_mask"]
-        log_p = self._log_probs(art["logits"][masked])
+        masked = art["masked_mask"] & self._unlearning_position_mask(input_ids)
+        log_p = self._condition_on_unlearning_vocabulary(
+            self._log_probs(art["logits"][masked])
+        )
 
         prompt = self._prompt_mask(input_ids, answer_mask, attention_mask)
         promptless = torch.where(prompt, self.mask_id, noised)

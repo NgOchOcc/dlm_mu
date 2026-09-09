@@ -9,8 +9,8 @@ variant instead fits the student at ``A_hat`` to the *question-masked* teacher
 
 the promptless distribution the teacher predicts when the whole question span is
 blanked out (exactly the ``log_base`` term PCSS averages to score prompt-
-dependence, see ``simple_tsd.py`` ``_select_forget_positions``). The forget
-objective becomes
+dependence, see ``simple_tsd.py`` ``_select_forget_positions``), conditioned on
+the inherited non-special vocabulary support. The forget objective becomes
 
     L_f = KL( p0(.|x_empty, y_M) || p_theta(.|x, y_M) )   on A_hat,
 
@@ -54,6 +54,9 @@ class DiffusionSimpleTSDQMask(DiffusionSimpleTSD):
         prompt = self._prompt_mask(input_ids, answer_mask, attention_mask)
         y_base = torch.where(prompt, self.mask_id, y_m)  # x_empty, answer still y_M
         log_t = self._teacher_log_probs(y_base, attention_mask)  # log p0(.|x_empty, y_M)
+        log_t = self._condition_on_unlearning_vocabulary(log_t)
+        log_p_forget = self._condition_on_unlearning_vocabulary(log_p)
+        log_p0_forget = self._condition_on_unlearning_vocabulary(log_p0)
 
         if self.erase_gold_in_target:
             demote = self._demote_mask(log_t, input_ids)
@@ -64,12 +67,13 @@ class DiffusionSimpleTSDQMask(DiffusionSimpleTSD):
         # the target was demoted to -inf (0 * -inf masked to 0 before the sum).
         neg = torch.isneginf(log_t)
         t = log_t.exp()
-        t_log_t = torch.where(neg, torch.zeros_like(log_t), t * log_t)
-        kl_f = t_log_t.sum(-1) - (t * log_p).sum(-1)
+        safe_log_t = log_t.masked_fill(neg, 0.0)
+        safe_log_p = log_p_forget.masked_fill(neg, 0.0)
+        kl_f = (t * (safe_log_t - safe_log_p)).sum(-1)
 
         gold = input_ids.unsqueeze(-1)
         removed = (
-            log_p0.gather(-1, gold).squeeze(-1).exp()
+            log_p0_forget.gather(-1, gold).squeeze(-1).exp()
             - log_t.gather(-1, gold).squeeze(-1).exp()
         ).clamp_min(0.0)
         # Verification diagnostics (read by _draw_loss): gold mass under the raw
@@ -79,7 +83,9 @@ class DiffusionSimpleTSDQMask(DiffusionSimpleTSD):
         # independent gold mass the answer's own revealed tokens still pin down.
         with torch.no_grad():
             self._forget_diag = {
-                "gold_prob_teacher_raw": log_p0.gather(-1, gold).squeeze(-1).exp(),
+                "gold_prob_teacher_raw": log_p0_forget.gather(-1, gold)
+                .squeeze(-1)
+                .exp(),
                 "gold_prob_target": log_t.gather(-1, gold).squeeze(-1).exp(),
             }
         return kl_f, removed

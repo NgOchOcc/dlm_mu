@@ -14,8 +14,10 @@ Retain-set-free; runs on the forget set only. Two differences from ``DiffusionTS
 
 Demoted set per selected position: ``{y_i}`` (``demotion="minimal"``) or ``{y_i}`` plus
 the teacher's ``belief_top_k`` highest-probability tokens (``demotion="belief"``, as in
-``DiffusionTSD``). Per-example loss ``L = alpha*L_f + (1-alpha)*L_d`` when ``R`` is
-nonempty, else ``L_f``; ``alpha`` is the forget weight, not a retain-NLL weight.
+``DiffusionTSD``). Special/control tokens are excluded from selection and from both sides
+of the forget KL, while the self-distillation path retains the full vocabulary.
+Per-example loss ``L = alpha*L_f + (1-alpha)*L_d`` when ``R`` is nonempty, else ``L_f``;
+``alpha`` is the forget weight, not a retain-NLL weight.
 """
 
 import re
@@ -125,11 +127,18 @@ class DiffusionSimpleTSD(DiffusionGradDiff):
         self.mask_id = self.processing_class.mask_token_id
         self.pad_id = self.processing_class.pad_token_id
         self.vocab_size = len(self.processing_class)
+        lexical_vocab_size = self.vocab_size - len(
+            self._forbidden_unlearning_token_ids()
+        )
+        if lexical_vocab_size < 2:
+            raise ValueError(
+                "SimpleTSD requires at least two non-special tokenizer tokens"
+            )
         # Belief demotion must leave at least one surviving token to renormalise over.
-        if demotion == "belief" and self.belief_top_k + 1 >= self.vocab_size:
+        if demotion == "belief" and self.belief_top_k + 1 >= lexical_vocab_size:
             raise ValueError(
                 f"belief_top_k={self.belief_top_k} leaves no surviving vocabulary "
-                f"(vocab_size={self.vocab_size})"
+                f"(lexical_vocab_size={lexical_vocab_size})"
             )
         self.ref_model = self._prepare_ref_model(self.model)
         for p in self.ref_model.parameters():
@@ -161,6 +170,7 @@ class DiffusionSimpleTSD(DiffusionGradDiff):
         b, l = answer_mask.shape
         device = input_ids.device
         prompt = self._prompt_mask(input_ids, answer_mask, attention_mask)
+        selectable = answer_mask & self._unlearning_position_mask(input_ids)
         gold = input_ids.unsqueeze(-1)
 
         s_sum = torch.zeros(b, l, device=device)
@@ -168,18 +178,22 @@ class DiffusionSimpleTSD(DiffusionGradDiff):
         for _ in range(self.sel_mc):
             t = self.time_epsilon + (1 - self.time_epsilon) * torch.rand(b, device=device)
             p_mask = (1.0 - self.scheduler(t)).unsqueeze(1)  # rho, per example
-            m = (torch.rand((b, l), device=device) < p_mask) & answer_mask
+            m = (torch.rand((b, l), device=device) < p_mask) & selectable
             if not bool(m.any()):
                 continue
             y = torch.where(m, self.mask_id, input_ids)
-            log_cond = self._teacher_log_probs(y, attention_mask).gather(-1, gold).squeeze(-1)
+            log_cond = self._condition_on_unlearning_vocabulary(
+                self._teacher_log_probs(y, attention_mask)
+            ).gather(-1, gold).squeeze(-1)
             y_base = torch.where(prompt, self.mask_id, y)
-            log_base = self._teacher_log_probs(y_base, attention_mask).gather(-1, gold).squeeze(-1)
+            log_base = self._condition_on_unlearning_vocabulary(
+                self._teacher_log_probs(y_base, attention_mask)
+            ).gather(-1, gold).squeeze(-1)
             s_sum = s_sum + torch.where(m, log_cond - log_base, torch.zeros_like(s_sum))
             cnt = cnt + m.float()
         s = s_sum / cnt.clamp_min(1.0)  # never-masked tokens keep s = 0
 
-        a_hat = self._threshold_scores(s, answer_mask)
+        a_hat = self._threshold_scores(s, selectable)
         if self.drop_question_overlap:
             a_hat = a_hat & ~self._question_overlap_mask(input_ids, answer_mask, prompt)
         return a_hat, s
@@ -376,13 +390,17 @@ class DiffusionSimpleTSD(DiffusionGradDiff):
                     ``answer_mask``, ``a_hat``, ...).
         Returns ``(kl_f, removed)``, each ``[b, l]``.
         """
-        demote = self._demote_mask(log_p0, ctx["input_ids"])
-        log_q = log_p0.masked_fill(demote, float("-inf"))
+        log_p_forget = self._condition_on_unlearning_vocabulary(log_p)
+        log_p0_forget = self._condition_on_unlearning_vocabulary(log_p0)
+        demote = self._demote_mask(log_p0_forget, ctx["input_ids"])
+        log_q = log_p0_forget.masked_fill(demote, float("-inf"))
         log_q = log_q - torch.logsumexp(log_q, dim=-1, keepdim=True)
         q = log_q.exp()
-        q_log_q = torch.where(demote, torch.zeros_like(log_q), q * log_q)  # 0*-inf -> 0
-        kl_f = q_log_q.sum(-1) - (q * log_p).sum(-1)
-        removed = (log_p0.exp() * demote).sum(-1)  # sum_{u in B} p0(u), diagnostics only
+        support = ~(demote | self._forbidden_unlearning_vocab_mask(log_q.device))
+        safe_log_q = log_q.masked_fill(~support, 0.0)
+        safe_log_p = log_p_forget.masked_fill(~support, 0.0)
+        kl_f = (q * (safe_log_q - safe_log_p)).sum(-1)
+        removed = (log_p0_forget.exp() * demote).sum(-1)
         # Verification diagnostics (read by _draw_loss): gold mass under the RAW teacher
         # (what it remembers) vs under the edited TARGET the student is fit to. The target
         # gold prob is 0 by construction here (gold set to -inf), proving the demotion
@@ -390,7 +408,9 @@ class DiffusionSimpleTSD(DiffusionGradDiff):
         with torch.no_grad():
             gold_ids = ctx["input_ids"].unsqueeze(-1)
             self._forget_diag = {
-                "gold_prob_teacher_raw": log_p0.gather(-1, gold_ids).squeeze(-1).exp(),
+                "gold_prob_teacher_raw": log_p0_forget.gather(-1, gold_ids)
+                .squeeze(-1)
+                .exp(),
                 "gold_prob_target": log_q.gather(-1, gold_ids).squeeze(-1).exp(),
             }
         return kl_f, removed
@@ -424,7 +444,12 @@ class DiffusionSimpleTSD(DiffusionGradDiff):
                 raise ValueError(
                     f"answer_mask shape {tuple(provided.shape)} != inputs {tuple(answer_mask.shape)}."
                 )
-            a_hat, scores = provided & answer_mask, None
+            a_hat = (
+                provided
+                & answer_mask
+                & self._unlearning_position_mask(input_ids)
+            )
+            scores = None
         else:
             a_hat, scores = self._select_forget_positions(input_ids, answer_mask, attention_mask)
 
