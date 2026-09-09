@@ -2,9 +2,7 @@
 
 For a shared noised answer state ``y_t``, let ``p_cond`` be the frozen teacher
 with the forget prompt visible and ``p_uncond`` the same teacher with the prompt
-replaced by mask tokens. For ``0 <= lam < 1``, set
-
-    beta = lam / (1 - lam)
+replaced by mask tokens. For a direct suppression strength ``beta >= 0``, set
 
     delta_+(v) = max(0, log p_cond(v) - log p_uncond(v)),
     q_forget(v) = softmax(log p_cond(v) - beta * delta_+(v)).
@@ -24,14 +22,13 @@ from trainer.dlm.unlearn.base import DiffusionUnlearnTrainer
 
 
 class DiffusionAutoUnlearning(DiffusionUnlearnTrainer):
-    def __init__(self, lam=0.5, *args, **kwargs):
-        lam = float(lam)
-        if not math.isfinite(lam) or not 0.0 <= lam < 1.0:
-            raise ValueError(f"lam must be finite and satisfy 0 <= lam < 1, got {lam}")
+    def __init__(self, beta=1.0, *args, **kwargs):
+        beta = float(beta)
+        if not math.isfinite(beta) or beta < 0.0:
+            raise ValueError(f"beta must be finite and satisfy beta >= 0, got {beta}")
 
         super().__init__(*args, **kwargs)
-        self.lam = lam
-        self.beta = lam / (1.0 - lam)
+        self.beta = beta
         self.mask_id = self.processing_class.mask_token_id
         self.pad_id = self.processing_class.pad_token_id
         self.vocab_size = len(self.processing_class)

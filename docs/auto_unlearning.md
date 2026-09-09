@@ -1,9 +1,10 @@
 # Auto Unlearning for Masked Diffusion Language Models
 
-Auto Unlearning is a retain-free objective that starts from the frozen teacher's
-original conditional prediction and suppresses the part that the forget prompt
-adds relative to a prompt-masked prediction. A student is then trained directly
-toward that target on normal masked-diffusion states.
+Auto Unlearning is a retain-free objective for suppressing prompt-specific
+knowledge while minimizing changes to the frozen teacher's other behavior. It
+compares the teacher's prediction with the forget prompt visible against its
+prediction with that prompt masked, then trains the student toward the resulting
+selective target on ordinary masked-diffusion states.
 
 This document separates the mathematical definition from code and runtime
 details:
@@ -58,32 +59,49 @@ $$
 \max\!\left(0,\Delta_{i,t}(v)\right).
 $$
 
-## 3. Selective forgetting target
+## 3. Optimization view and selective target
 
-Use the existing bounded control $0\le\lambda<1$ and convert it to the
-nonnegative suppression strength
-
-$$
-\beta=\frac{\lambda}{1-\lambda}.
-$$
-
-Then define
+Let the nonnegative suppression score be
 
 $$
-q_{i,t}^{\mathrm{forget}}(v)
+s_{i,t}(v)=\Delta_{i,t,+}(v),
+$$
+
+and let $\beta\ge 0$ directly control suppression strength. At every masked
+position, define the target as the solution of
+
+$$
+q_{i,t}^{*}
+=
+\underset{q\in\Delta(\mathcal V)}{\arg\min}
+\left[
+D_{\mathrm{KL}}\!\left(q\,\|\,p_{\mathrm{cond}}^i\right)
++\beta\,\mathbb E_{v\sim q}\!\left[s_{i,t}(v)\right]
+\right].
+$$
+
+The first term keeps the target close to the original conditional teacher. The
+second penalizes probability mass on vocabulary tokens identified as
+prompt-specific. Thus the objective expresses **minimal behavioral change
+subject to suppressing prompt-specific information**.
+
+Solving the constrained optimization over probability distributions gives
+
+$$
+q_{i,t}^{*}(v)
 \propto
 p_{\mathrm{cond}}^i(v)
-\exp\!\left[-\beta\Delta_{i,t,+}(v)\right].
+\exp\!\left[-\beta s_{i,t}(v)\right].
 $$
 
-Equivalently,
+Equivalently, the normalized forget target is
 
 $$
 q_{i,t}^{\mathrm{forget}}(v)
 =
 \operatorname{Softmax}_v\!\left(
 \log p_{\mathrm{cond}}^i(v)
--\beta\Delta_{i,t,+}(v)
+-\beta s_{i,t}(v)
 \right).
 $$
 
@@ -131,14 +149,14 @@ This KL direction is part of the objective. Replacing it with
 $D_{\mathrm{KL}}(q^{\mathrm{forget}}\|p_\theta)$ would define a different
 optimization problem.
 
-## 5. Effect of $\lambda$
+## 5. Effect of $\beta$
 
 | Value | Behavior |
 |---:|---|
-| $\lambda=0$ | $q^{\mathrm{forget}}=p_{\mathrm{cond}}$: preserve the original conditional teacher. |
-| $0<\lambda<1$ | Start from the conditional teacher and suppress only prompt-added probability with strength $\beta=\lambda/(1-\lambda)$. |
-| $\lambda\to1^-$ | The target can become extremely sharp because $\beta$ diverges. |
-| $\lambda\ge1$ | Unsupported because the convenience mapping to $\beta$ is undefined or negative. |
+| $\beta=0$ | $q^{\mathrm{forget}}=p_{\mathrm{cond}}$: preserve the original conditional teacher. |
+| $0<\beta<1$ | Apply mild suppression to prompt-added probability. |
+| $\beta=1$ | Cancel the positive conditional log-probability shift before normalization. |
+| $\beta>1$ | Penalize prompt-specific tokens more strongly; large values can produce a sharp target. |
 
 ---
 
@@ -208,8 +226,7 @@ and target construction run without gradients.
 
 ## 7. Numerical and modeling details
 
-- `lam` is validated before trainer setup and must be finite with
-  `0 <= lam < 1`.
+- `beta` is validated before trainer setup and must be finite with `beta >= 0`.
 - Student, teacher, and target distributions first drop padded LM-head-only rows,
   then exclude special/control IDs and normalize over the remaining tokenizer
   vocabulary.
@@ -231,13 +248,18 @@ The trainer defaults are in
 
 | Argument | Default | Constraint | Purpose |
 |---|---:|---|---|
-| `lam` | `0.5` | $0\le\lambda<1$ | Bounded control for $\beta=\lambda/(1-\lambda)$. |
+| `beta` | `1.0` | $\beta\ge0$ and finite | Direct strength of prompt-specific suppression. |
 
 For direct Hydra runs, override it with:
 
 ```bash
-trainer.method_args.lam=0.25
+trainer.method_args.beta=0.5
 ```
+
+This is a breaking parameter rename. To reproduce a run that used the old
+bounded parameter $\lambda$, convert it with
+$\beta=\lambda/(1-\lambda)$. For example, the old `lam=0.5` is the new
+`beta=1.0`.
 
 ## 9. Running on TOFU
 
@@ -247,16 +269,16 @@ Run the default LLaDA/forget10 experiment with:
 bash scripts/dlm/tofu/run_auto_unlearning.sh
 ```
 
-Set the bounded suppression control through `LAMBDA`:
+Set the suppression strength through `BETA`:
 
 ```bash
-LAMBDA=0.25 bash scripts/dlm/tofu/run_auto_unlearning.sh
+BETA=0.5 bash scripts/dlm/tofu/run_auto_unlearning.sh
 ```
 
 Dream and other standard TOFU launcher controls remain available:
 
 ```bash
-MODEL=dream GPUS=0,1 SPLIT=forget05 LAMBDA=0.5 \
+MODEL=dream GPUS=0,1 SPLIT=forget05 BETA=1.0 \
   bash scripts/dlm/tofu/run_auto_unlearning.sh
 ```
 
@@ -267,7 +289,7 @@ overrides work as they do for other DLLM methods.
 
 ## 10. Caveats
 
-- Values close to one strongly amplify prompt-added log-probability. Begin
+- Large $\beta$ values strongly suppress prompt-added log-probability. Begin
   with moderate values and inspect target entropy and training stability.
 - If revealed answer tokens already expose the forgotten fact, the prompt-masked
   teacher can still assign it high probability.
