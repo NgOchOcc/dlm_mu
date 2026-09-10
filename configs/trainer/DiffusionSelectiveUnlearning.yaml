@@ -4,5 +4,8 @@ defaults:
 handler: DiffusionSelectiveUnlearning
 method_args:
   # Entity-dependent semantic suppression strength. beta=0 reduces the target
-  # to pure entity-counterfactual teacher distillation.
+  # at forget positions to pure entity-counterfactual teacher distillation.
   beta: 1.0
+  # Full-query teacher preservation at copied-subject and ordinary non-forget
+  # positions. The forget and preserve reductions are normalized separately.
+  preserve_weight: 1.0
