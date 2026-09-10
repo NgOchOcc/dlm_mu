@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# RepelGenDistill (masked-diffusion unlearning): repel forget positions off the gold
+# RDU (masked-diffusion unlearning): repel forget positions off the gold
 # secret + distil the whole answer toward a teacher-generated SECRET-FREE completion.
 # Retain-FREE, forget-set only.
 #
@@ -23,11 +23,11 @@
 #     GAMMA_ANC=1.0          SIGMA=median      SIGMA_ANC=1.0
 #     LOSS_MC=1
 #
-# NOTE: RepelGenDistill reads answer-aligned logit/embedding spans, so right_shift_logits
+# NOTE: RDU reads answer-aligned logit/embedding spans, so right_shift_logits
 # is unsupported -- use the `llada` config (Dream is not applicable to this method).
 set -euo pipefail
 bash "$(dirname "$0")/unlearn.sh" \
-    "${1:-llada}" "${2:-}" "${3:-unlearn90}" DiffusionRepelGenDistill \
+    "${1:-llada}" "${2:-}" "${3:-unlearn90}" DiffusionRDU \
     trainer.method_args.select_method="${SELECT_METHOD:-topk}" \
     trainer.method_args.topk_frac="${TOPK_FRAC:-0.8}" \
     trainer.method_args.sel_mc="${SEL_MC:-16}" \

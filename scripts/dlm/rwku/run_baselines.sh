@@ -6,7 +6,7 @@ dlm_config "${1:-}" "${2:-}"
 EPOCHS="${UNLEARN_EPOCHS:-1}"
 NPROC=$(ngpus "$GPUS")
 assert_gpus
-read -r -a METHODS <<< "${3:-DiffusionGradAscent DiffusionNPO DiffusionSimNPO DiffusionWGA}"
+read -r -a METHODS <<< "${3:-DiffusionGA DiffusionNPO DiffusionSimNPO DiffusionWGA}"
 
 rwku_eval() {
     local task=$1

@@ -1,4 +1,4 @@
-# Repel + generative self-distillation (RepelGenDistill) for masked-diffusion unlearning.
+# Repel + generative self-distillation (RDU) for masked-diffusion unlearning.
 # Port of MDU's sbru_forget_mode="repel_gendistill" -- recommended config only.
 # Retain-FREE, forget-set only. Selects prompt-dependent answer tokens (PCSS, Alg. 1),
 # GENERATES a secret-free answer with the frozen teacher (identity-blanked query), distils
@@ -7,7 +7,7 @@
 defaults:
   - DiffusionFinetune
 
-handler: DiffusionRepelGenDistill
+handler: DiffusionRDU
 method_args:
   # repel_alpha: weight of the repulsion term in the per-example loss
   #   L = repel_alpha * L_repel + (1 - repel_alpha) * L_distill.
@@ -85,5 +85,5 @@ method_args:
   # back-propagates each draw immediately, so peak activation memory stays at one student
   # graph regardless of loss_mc.
   loss_mc: 1
-  # gamma: overall scale on the RepelGenDistill forget loss.
+  # gamma: overall scale on the RDU forget loss.
   gamma: 1.0

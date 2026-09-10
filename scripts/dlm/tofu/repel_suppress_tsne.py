@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """Diagnose whether suppress_gold merely swaps the secret for a SAME-SEMANTIC token.
 
-RepelGenDistill's ``suppress_gold`` sets the gold token logit to -inf at each selected
+RDU's ``suppress_gold`` sets the gold token logit to -inf at each selected
 forget position (A_hat), so the distillation anchor / repulsion cannot copy the secret
 back. This script tests the failure mode: if forbidding the gold token just makes the
 teacher pick a NEAR-SYNONYM, then suppression removes the surface token but NOT the

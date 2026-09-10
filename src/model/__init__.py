@@ -4,7 +4,6 @@ from typing import Dict, Any
 import os
 import torch
 import logging
-from model.probe import ProbedLlamaForCausalLM
 
 hf_home = os.getenv("HF_HOME", default=None)
 
@@ -51,6 +50,11 @@ def get_model(model_cfg: DictConfig):
     tokenizer_args = model_cfg.tokenizer_args
     torch_dtype = get_dtype(model_args)
     model_handler = model_cfg.get("model_handler", "AutoModelForCausalLM")
+    if model_handler == "ProbedLlamaForCausalLM":
+        from model.probe import ProbedLlamaForCausalLM
+
+        _register_model(ProbedLlamaForCausalLM)
+
     model_cls = MODEL_REGISTRY[model_handler]
     with open_dict(model_args):
         model_path = model_args.pop("pretrained_model_name_or_path", None)
@@ -109,4 +113,3 @@ def get_tokenizer(tokenizer_cfg: DictConfig):
 
 # register models
 _register_model(AutoModelForCausalLM)
-_register_model(ProbedLlamaForCausalLM)

@@ -6,6 +6,7 @@
 defaults:
   - tofu_dlm_metrics:
     - forget_Q_A_ROUGE
+    - forget_Q_A_PARA_ROUGE
     - retain_Q_A_ROUGE
     # forget_Q_A_PARA_Prob must precede forget_Truth_Ratio: the truth ratio takes
     # it as a pre_compute, and pre_computes reuse the cache (metrics/base.py:85)

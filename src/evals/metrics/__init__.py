@@ -34,10 +34,6 @@ from evals.metrics.dlm_rwku import (
     truthfulqa_mc1_diffusion,
     triviaqa_em_diffusion,
 )
-from evals.metrics.dlm_llm_judge import (
-    naturalness_diffusion,
-    similarity_diffusion,
-)
 
 METRICS_REGISTRY: Dict[str, UnlearningMetric] = {}
 
@@ -101,7 +97,3 @@ _register_metric(extraction_strength_diffusion)
 _register_metric(mmlu_accuracy_diffusion)
 _register_metric(truthfulqa_mc1_diffusion)
 _register_metric(triviaqa_em_diffusion)
-
-# Register DLM LLM-judge metrics
-_register_metric(naturalness_diffusion)
-_register_metric(similarity_diffusion)

@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""Visualize DiffusionRepelGenDistill's SECRET-FREE teacher generation on TOFU forget10.
+"""Visualize DiffusionRDU's SECRET-FREE teacher generation on TOFU forget10.
 
 Calls the REAL trainer methods (no stubs) against a real LLaDA SFT teacher on a single
 GPU, so it exercises exactly the code path used during training -- minus DeepSpeed
@@ -38,7 +38,7 @@ sys.path.insert(0, os.path.join(REPO, "src"))
 from datasets import load_dataset  # noqa: E402
 from transformers import AutoModel, AutoModelForCausalLM, AutoTokenizer  # noqa: E402
 
-from trainer.dlm.unlearn.repel_gendistill import DiffusionRepelGenDistill  # noqa: E402
+from trainer.dlm.unlearn.repel_gendistill import DiffusionRDU  # noqa: E402
 
 _SPECIAL_RE = re.compile(r"<\|?[^<>]*\|?>")
 _WORD_RE = re.compile(r"[A-Za-z0-9]{2,}")
@@ -46,7 +46,7 @@ _WORD_RE = re.compile(r"[A-Za-z0-9]{2,}")
 
 def build_trainer(model, tokenizer, args):
     """Bind only what the selection/generation methods read onto a bare instance."""
-    t = object.__new__(DiffusionRepelGenDistill)
+    t = object.__new__(DiffusionRDU)
     t.processing_class = tokenizer
     t.ref_model = model
     t.mask_id = tokenizer.mask_token_id or getattr(model.config, "mask_token_id", 126336)
@@ -204,7 +204,7 @@ def write_html(records, args):
             f"</div>"
         )
     n_leak_hi = sum(1 for r in records if r["leak_rate"] >= 0.5)
-    doc = f"""<!doctype html><meta charset='utf-8'><title>RepelGenDistill secret-free gen</title>
+    doc = f"""<!doctype html><meta charset='utf-8'><title>RDU secret-free gen</title>
 <style>
  body{{font:14px system-ui;margin:20px;background:#faf9f7;color:#111;line-height:1.6}}
  .wrap{{max-width:1000px;margin:0 auto}}
@@ -220,7 +220,7 @@ def write_html(records, args):
  .leak-hi{{color:#a00;font-weight:700}} .leak-ok{{color:#070}}
 </style>
 <div class='wrap'>
-<h1>RepelGenDistill — teacher sinh secret-free (mask entity trong query)</h1>
+<h1>RDU — teacher sinh secret-free (mask entity trong query)</h1>
 <p class='sub'>model: <code>{esc(args.model)}</code> · select={args.select_method} topk_frac={args.topk_frac} sel_mc={args.sel_mc}
  gen_steps={args.gen_steps} keep_answer={args.keep_answer} · query_blank_identity=True<br>
  {len(records)} ví dụ · leak_rate ≥ 0.5: <b>{n_leak_hi}</b>. Gọi trực tiếp

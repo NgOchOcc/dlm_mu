@@ -11,12 +11,12 @@ for split in ${3:-forget10 forget05 forget01}; do
     tofu_split "$split"
 
     case "$split" in
-        forget10) epochs=10 ;;
-        forget05) epochs=5  ;;
+        forget10) epochs=5 ;;
+        forget05) epochs=7  ;;
         forget01) epochs=25 ;;
     esac
 
-    for method in DiffusionGradAscent DiffusionNPO DiffusionSimNPO DiffusionWGA; do
+    for method in DiffusionGA DiffusionNPO DiffusionSimNPO DiffusionWGA; do
         task="${FORGET}/tofu_${MODEL}_${method}_forgetonly"
         tofu_unlearn "$method" "$task" "$FORGET" "$RETAIN" "$HOLDOUT" "$epochs" \
             "~data.retain"

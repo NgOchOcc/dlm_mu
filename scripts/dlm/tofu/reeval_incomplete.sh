@@ -6,7 +6,7 @@
 # eval did.
 #
 #   usage: bash scripts/dlm/tofu/reeval_incomplete.sh [gpus] [methods] [split]
-#   defaults: gpus=0,1,2,3,4,5,6,7  methods=GradAscent,WGA,NPO,SimNPO  split=forget10
+#   defaults: gpus=0,1,2,3,4,5,6,7  methods=GA,WGA,NPO,SimNPO  split=forget10
 #   env: NEED=9  minimum #metrics for a summary to count as complete
 set -uo pipefail
 cd "$(dirname "$0")/../../.." || exit 1
@@ -16,7 +16,7 @@ gpus="${1:-0,1,2,3,4,5,6,7}"
 minimum_metrics="${NEED:-9}"
 dlm_config llada "$gpus"
 tofu_split "${3:-forget10}"
-parse_methods "${2:-GradAscent,WGA,NPO,SimNPO}"
+parse_methods "${2:-GA,WGA,NPO,SimNPO}"
 
 IFS=',' read -r -a gpu_list <<< "$gpus"
 mkdir -p logs/eval

@@ -24,9 +24,9 @@ epochs="${EPOCHS:-}"
 if [[ -z "$epochs" ]]; then
     for split in ${splits//,/ }; do
         case "$split" in
-            forget10|unlearn90) count=10 ;;
-            forget05|unlearn95) count=20 ;;
-            forget01|unlearn99) count=40 ;;
+            forget10|unlearn90) count=100 ;;
+            forget05|unlearn95) count=200 ;;
+            forget01|unlearn99) count=300 ;;
             *) echo "Unknown split: $split" >&2; exit 1 ;;
         esac
         epochs="${epochs:+$epochs,}$count"
@@ -36,7 +36,7 @@ fi
 EPOCHS="$epochs" \
 bash "$(dirname "$0")/unlearn.sh" \
     "${1:-llada}" "${2:-}" "$splits" DiffusionADU \
-    trainer.method_args.auto_weight="${AUTO_WEIGHT:-1.0}" \
+    trainer.method_args.auto_weight="${AUTO_WEIGHT:-0.0}" \
     trainer.method_args.lam="${LAM:-0.5}" \
     trainer.method_args.select_method="${SELECT_METHOD:-topk}" \
     trainer.method_args.topk_frac="${TOPK_FRAC:-0.8}" \

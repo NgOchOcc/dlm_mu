@@ -1,0 +1,7 @@
+defaults:
+  - DiffusionFinetune
+
+handler: DiffusionBST
+method_args:
+  lambda_bst: 0.5
+  top_k: 10

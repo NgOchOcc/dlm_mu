@@ -3,7 +3,7 @@
 # experiment/unlearn/muse/dlm.yaml but the retain dataset is dropped entirely
 # (retain=null), matching the RWKU/GAP forget-only precedent. With no retain
 # batch, DiffusionUnlearnTrainer.optional_retain_loss returns 0.0, so the alpha
-# term vanishes for GradDiff/NPO/SimNPO/WGA and GradAscent is unchanged. Dropping
+# term vanishes for GradDiff/NPO/SimNPO/WGA and GA is unchanged. Dropping
 # the retain stream also halves activation memory (no retain forward/backward),
 # which is what lets LLaDA-8B fit at seq 2048.
 defaults:

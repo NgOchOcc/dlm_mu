@@ -5,10 +5,10 @@ import math
 import torch
 import torch.nn.functional as F
 
-from trainer.dlm.unlearn.repel_gendistill import DiffusionRepelGenDistill
+from trainer.dlm.unlearn.repel_gendistill import DiffusionRDU
 
 
-class DiffusionADU(DiffusionRepelGenDistill):
+class DiffusionADU(DiffusionRDU):
     """Combine selective anti-conditional KL with generative distillation.
 
     For each diffusion mask draw, the objective is
@@ -16,7 +16,7 @@ class DiffusionADU(DiffusionRepelGenDistill):
         auto_weight * L_auto + (1 - auto_weight) * L_gendistill.
 
     ``L_auto`` is the reverse KL target from ``DiffusionAutoUnlearning`` and
-    ``L_gendistill`` is ``loss_d`` from ``DiffusionRepelGenDistill``. The RBF
+    ``L_gendistill`` is ``loss_d`` from ``DiffusionRDU``. The RBF
     repulsion branch is intentionally disabled.
     """
 

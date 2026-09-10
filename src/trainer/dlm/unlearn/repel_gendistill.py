@@ -42,7 +42,7 @@ def _content_frags(surface, min_len=2):
     return [f for f in re.findall(r"[a-z0-9]+", surface) if len(f) >= min_len]
 
 
-class DiffusionRepelGenDistill(DiffusionGradDiff):
+class DiffusionRDU(DiffusionGradDiff):
     _QUERY_KEEP = {
         "what", "who", "which", "how", "when", "where", "why", "whose", "can", "could",
         "would", "does", "did", "do", "is", "are", "was", "were", "has", "have", "had",

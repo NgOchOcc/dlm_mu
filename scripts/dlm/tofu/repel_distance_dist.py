@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """Distance-distribution evidence for the repel method.
 
-RepelGenDistill's ``loss_f`` is an RBF repulsion, in the output-embedding space E
+RDU's ``loss_f`` is an RBF repulsion, in the output-embedding space E
 (``model.get_output_embeddings().weight``), acting on the model's SOFT-EMBEDDING at each
 forget position:
 
@@ -18,7 +18,7 @@ forward, gold visible -- the "does the model still know the secret when asked no
 test), for two models:
 
     SFT     = the fine-tuned teacher that still knows everything
-    repel   = the RepelGenDistill-unlearned checkpoint
+    repel   = the RDU-unlearned checkpoint
 
 over two position sets:
 

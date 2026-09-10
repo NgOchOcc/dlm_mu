@@ -1,7 +1,7 @@
 from trainer.dlm.unlearn.base import DiffusionUnlearnTrainer
 
 
-class DiffusionGradAscent(DiffusionUnlearnTrainer):
+class DiffusionGA(DiffusionUnlearnTrainer):
     """Gradient ascent on the masked-diffusion forget loss."""
 
     def compute_loss(

@@ -1,5 +1,5 @@
 # @package _global_
-# Masked-diffusion (LLaDA/Dream) RepelGenDistill unlearning on TOFU. Port of MDU's
+# Masked-diffusion (LLaDA/Dream) RDU unlearning on TOFU. Port of MDU's
 # repel_gendistill (recommended config). Retain-FREE, forget-set only: selects prompt-
 # dependent answer tokens (PCSS, Alg. 1), GENERATES a secret-free answer with the frozen
 # teacher from an identity-blanked query, distils the student toward it (loss_d) and repels
@@ -7,7 +7,7 @@
 # retain dataset is dropped entirely, matching the TSD / SimpleTSD / GAP / AURA precedent.
 defaults:
   - override /model: LLaDA-8B-Instruct
-  - override /trainer: DiffusionRepelGenDistill
+  - override /trainer: DiffusionRDU
   - override /data: unlearn
   - override /data/datasets@data.forget: TOFU_QA_forget
   - override /data/datasets@data.retain: null
@@ -19,7 +19,7 @@ holdout_split: holdout10
 question_key: "question"
 
 # Dream needs right-shifted logits and the CART loss weighting; LLaDA does not. NOTE:
-# RepelGenDistill reads hidden/logit spans aligned to the answer, so right_shift_logits
+# RDU reads hidden/logit spans aligned to the answer, so right_shift_logits
 # is not supported -- use LLaDA (the default) for this method.
 
 eval:

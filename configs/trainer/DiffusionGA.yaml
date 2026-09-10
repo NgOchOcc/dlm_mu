@@ -1,4 +1,4 @@
 defaults:
   - DiffusionFinetune
 
-handler: DiffusionGradAscent
+handler: DiffusionGA

@@ -4,7 +4,7 @@ from omegaconf import DictConfig, OmegaConf
 from transformers import Trainer, TrainingArguments
 
 from trainer.base import FinetuneTrainer
-from trainer.unlearn.grad_ascent import GradAscent
+from trainer.unlearn.grad_ascent import GA
 from trainer.unlearn.grad_diff import GradDiff
 from trainer.unlearn.npo import NPO
 from trainer.unlearn.dpo import DPO
@@ -20,15 +20,16 @@ from trainer.unlearn.pdu import PDU
 # separate from the autoregressive LLM trainers above.
 from trainer.dlm import DiffusionFinetuneTrainer
 from trainer.dlm.unlearn import (
-    DiffusionGradAscent,
+    DiffusionGA,
     DiffusionGradDiff,
     DiffusionNPO,
     DiffusionSimNPO,
     DiffusionWGA,
     DiffusionMDU,
     DiffusionTSD,
-    DiffusionRepelGenDistill,
+    DiffusionRDU,
     DiffusionADU,
+    DiffusionBST,
 )
 
 
@@ -109,7 +110,7 @@ _register_trainer(Trainer)
 _register_trainer(FinetuneTrainer)
 
 # Register Unlearning Trainer
-_register_trainer(GradAscent)
+_register_trainer(GA)
 _register_trainer(GradDiff)
 _register_trainer(NPO)
 _register_trainer(DPO)
@@ -123,12 +124,13 @@ _register_trainer(PDU)
 
 # Register DLM Trainers
 _register_trainer(DiffusionFinetuneTrainer)
-_register_trainer(DiffusionGradAscent)
+_register_trainer(DiffusionGA)
 _register_trainer(DiffusionGradDiff)
 _register_trainer(DiffusionNPO)
 _register_trainer(DiffusionSimNPO)
 _register_trainer(DiffusionWGA)
 _register_trainer(DiffusionMDU)
 _register_trainer(DiffusionTSD)
-_register_trainer(DiffusionRepelGenDistill)
+_register_trainer(DiffusionRDU)
 _register_trainer(DiffusionADU)
+_register_trainer(DiffusionBST)

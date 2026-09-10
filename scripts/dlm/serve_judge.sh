@@ -31,7 +31,7 @@
 set -uo pipefail
 cd "$(dirname "$0")/../.." || exit 1
 
-MODEL="${JUDGE_SERVE_MODEL:-Qwen/Qwen3.5-27B}"
+MODEL="${JUDGE_SERVE_MODEL:-Qwen/Qwen3.8-27B}"
 PORT="${PORT:-8000}"
 GPUS="${GPUS:-0}"
 TP="${TP:-1}"

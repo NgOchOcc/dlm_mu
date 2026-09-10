@@ -5,7 +5,7 @@ source scripts/dlm/lib.sh
 dlm_config "${1:-}" "${2:-}"
 
 EPOCHS="${UNLEARN_EPOCHS:-5}"
-task="rwku_${MODEL}_DiffusionGradAscent"
+task="rwku_${MODEL}_DiffusionGA"
 nproc=$(ngpus "$GPUS")
 port=$(free_port 29600)
 
@@ -14,7 +14,7 @@ CUDA_VISIBLE_DEVICES=${GPUS} accelerate launch \
     src/train.py --config-name=unlearn.yaml \
     experiment=unlearn/rwku/dlm \
     model=${MODEL} \
-    trainer=DiffusionGradAscent \
+    trainer=DiffusionGA \
     task_name=${task} \
     trainer.args.num_train_epochs=${EPOCHS} \
     trainer.args.per_device_train_batch_size=4 \

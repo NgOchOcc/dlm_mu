@@ -13,7 +13,7 @@
 #   usage: bash scripts/dlm/tofu/per_epoch.sh [gpus] [methods] [epochs] [split]
 #
 #     gpus     default 0,1,2,3,4,5,6,7 (split into two 4-GPU groups)
-#     methods  default GradAscent,WGA,NPO,SimNPO
+#     methods  default GA,WGA,NPO,SimNPO
 #     epochs   default 10
 #     split    default forget10 (unlearn90)
 #
@@ -29,7 +29,7 @@ gpus="${1:-0,1,2,3,4,5,6,7}"
 epochs="${3:-10}"
 dlm_config llada "$gpus"
 tofu_split "${4:-forget10}"
-parse_methods "${2:-GradAscent,WGA,NPO,SimNPO}"
+parse_methods "${2:-GA,WGA,NPO,SimNPO}"
 
 # Split the visible GPUs into two equal groups (one per concurrent method).
 IFS=',' read -r -a gpu_list <<< "$gpus"

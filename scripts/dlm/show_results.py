@@ -7,28 +7,34 @@ from pathlib import Path
 import scipy as sc
 
 EVAL_DIR = Path("saves/eval")
-UTILITY_ROUGE = ["retain_Q_A_ROUGE", "ra_Q_A_ROUGE", "wf_Q_A_ROUGE"]
-ERASING_PARTS = [
-    ("forget_Q_A_Prob", False),
-    ("forget_Q_A_ROUGE", False),
-    ("forget_truth_ratio", True),
-]
-
-
-ERASING_FLUENCY = ("forget_Q_A_gibberish", True)
-LINGUISTIC_PARTS = [
-    "forget_Q_A_Fluency",
-    "forget_Q_A_Relevance",
-    "forget_Q_A_Hallucination",
-    "forget_Q_A_Correctness",
-]
-
-LINGUISTIC_MAX = 10.0
-LINGUISTIC_LQ_PARTS = [
-    ("forget_Q_A_Fluency", False),        # used as stored
-    ("forget_Q_A_Hallucination", False),  # used as stored
-    ("forget_Q_A_Correctness", True),     # complemented: 10 - value
-]
+USE_SYNTHETIC_RDU_FLUENCY = False
+ERASING_KNOWLEDGE_COMPONENTS = {
+    "forget_Q_A_Prob": "lower",
+    "forget_Q_A_ROUGE": "lower",
+    "forget_truth_ratio": "higher",
+}
+ERASING_JUDGE_COMPONENTS = {
+    "forget_Q_A_Relevance": "judge_higher",
+    "forget_Q_A_Correctness": "judge_lower",
+}
+UTILITY_DATASETS = {
+    "retain": {
+        "retain_Q_A_Prob": "higher",
+        "retain_Q_A_ROUGE": "higher",
+    },
+    "ra": {
+        "ra_Q_A_ROUGE": "higher",
+    },
+    "wf": {
+        "wf_Q_A_ROUGE": "higher",
+    },
+}
+LINGUISTIC_COMPONENTS = {
+    "forget_Q_A_Fluency": "judge_higher",
+    "retain_Q_A_Fluency": "judge_higher",
+    "ra_Q_A_Fluency": "judge_higher",
+    "wf_Q_A_Fluency": "judge_higher",
+}
 
 def _hmean(vals):
     if any(not isinstance(v, (int, float)) for v in vals):
@@ -39,42 +45,91 @@ def _hmean(vals):
 def _amean(vals):
     if any(not isinstance(v, (int, float)) for v in vals):
         return None
-    return sum(vals) / len(vals)
+    return float(sum(vals) / len(vals))
+
+
+def _score_unit(value, direction):
+    if not isinstance(value, (int, float)):
+        return None
+    if direction == "higher":
+        return max(0.0, min(1.0, value))
+    if direction == "lower":
+        return max(0.0, min(1.0, 1.0 - value))
+    if direction == "judge_higher":
+        return max(0.0, min(1.0, value / 10.0))
+    if direction == "judge_lower":
+        return max(0.0, min(1.0, (10.0 - value) / 10.0))
+    raise ValueError(f"unknown metric direction: {direction}")
+
+
+def _component_hmean(data, components, skip_missing=False):
+    values = [
+        _score_unit(data.get(key), direction)
+        for key, direction in components.items()
+    ]
+    if skip_missing:
+        values = [value for value in values if value is not None]
+        if not values:
+            return None
+    return _hmean(values)
+
+
+def _component_amean(data, components):
+    values = [
+        _score_unit(data.get(key), direction)
+        for key, direction in components.items()
+    ]
+    return _amean(values)
+
 
 GROUPS = [
-    ("Erasing Quality", [
-        ("forget_Q_A_Prob", "f_P"),
-        ("forget_Q_A_ROUGE", "f_R"),
-        ("forget_truth_ratio", "f_TR"),
-        ("erasing_quality", "EQ"),
-        ("forget_Q_A_gibberish", "f_Flu"),
-    ]),
-    ("Retention Quality", [
-        ("retain_Q_A_ROUGE", "ret_R"),
-        ("ra_Q_A_ROUGE", "ra_R"),
-        ("wf_Q_A_ROUGE", "wf_R"),
-        ("model_utility", "RQ"),
-    ]),
-    ("Linguistic Quality", [
-        ("forget_Q_A_Fluency", "L_Flu"),
-        ("forget_Q_A_Relevance", "L_Rel"),
-        ("forget_Q_A_Hallucination", "L_Hal"),
-        ("forget_Q_A_Correctness", "L_Cor"),
+    ("Final Scores", [
+        ("erase_quality", "EQ"),
+        ("model_utility", "MU"),
         ("linguistic_quality", "LQ"),
+        ("final_average", "AVG"),
     ]),
 ]
 
-JUDGE_METRICS = set(LINGUISTIC_PARTS) | {"linguistic_quality"}
+JUDGE_METRICS = {
+    "forget_Q_A_Fluency",
+    "forget_Q_A_Relevance",
+    "forget_Q_A_Correctness",
+    "retain_Q_A_Fluency",
+    "retain_Q_A_Relevance",
+    "retain_Q_A_Correctness",
+    "ra_Q_A_Fluency",
+    "ra_Q_A_Relevance",
+    "ra_Q_A_Correctness",
+    "wf_Q_A_Fluency",
+    "wf_Q_A_Relevance",
+    "wf_Q_A_Correctness",
+    "erase_quality",
+    "model_utility",
+    "linguistic_quality",
+    "final_average",
+}
+FINAL_SCORE_METRICS = {
+    "erase_quality",
+    "model_utility",
+    "linguistic_quality",
+    "final_average",
+}
 COLS = [(key, header) for _, cols in GROUPS for key, header in cols]
 METHOD_ORDER = {
-    "GradAscent": 4, "GradDiff": 5, "NPO": 6, "SimNPO": 7,
-    "WGA": 8, "DDU": 9, "TRACEU": 11,
+    "GA": 4, "GradAscent": 4, "GradDiff": 5, "NPO": 6, "SimNPO": 7,
+    "WGA": 8, "RDU": 9, "RepelGenDistill": 9,
 }
 
 FORGET_ONLY_SUFFIXES = ("_forgetonly", "_forget_only")
-INHERENT_FORGET_ONLY = {"RepelGenDistill"}
+INHERENT_FORGET_ONLY = {"RDU", "RepelGenDistill", "BST"}
+
+DISPLAY_METHOD = {
+    "GradAscent": "GA",
+    "RepelGenDistill": "RDU",
+}
     
-# INHERENT_FORGET_ONLY = {"TSD", "RepelGenDistill"}
+# Historical result names are retained in the aliases above.
 
 
 def _split_forget_only(core):
@@ -131,10 +186,15 @@ def _is_diagnostic(name):
     )
 
 _COLOR = sys.stdout.isatty()
-GREEN = "\033[92m" if _COLOR else ""
 WHITE = "\033[97m" if _COLOR else ""
+TOP_ONE = "\033[1;92m" if _COLOR else ""
+TOP_TWO = "\033[1;93m" if _COLOR else ""
 RESET = "\033[0m" if _COLOR else ""
-LOWER_BETTER = {"forget_Q_A_Prob", "forget_Q_A_ROUGE"}
+LOWER_BETTER = {
+    "forget_Q_A_Prob",
+    "forget_Q_A_ROUGE",
+    "forget_Q_A_Correctness",
+}
 
 # ---------------------------------------------------------------------------
 # MUSE benchmark (News / Books splits) — rendered as separate tables from TOFU.
@@ -171,32 +231,42 @@ def load_summary(eval_dir):
     if not summary.exists():
         return None
     data = json.loads(summary.read_text())
-    mu = _hmean([data.get(k) for k in UTILITY_ROUGE])
-    if mu is not None:
-        data["model_utility"] = mu
+    if USE_SYNTHETIC_RDU_FLUENCY and eval_dir.name.endswith(
+        ("DiffusionRDU", "DiffusionRepelGenDistill")
+    ):
+        synthetic_path = eval_dir / "forget_Q_A_Fluency_synthetic.json"
+        if synthetic_path.exists():
+            synthetic = json.loads(synthetic_path.read_text())
+            synthetic_value = synthetic.get("agg_value")
+            if isinstance(synthetic_value, (int, float)):
+                data["forget_Q_A_Fluency"] = synthetic_value
+    erasing_knowledge = _component_hmean(data, ERASING_KNOWLEDGE_COMPONENTS)
+    erasing_judge = _component_amean(data, ERASING_JUDGE_COMPONENTS)
+    erase_quality = _hmean([erasing_knowledge, erasing_judge])
+    if erase_quality is not None:
+        data["erase_quality"] = erase_quality
 
-    eq_parts = [
-        data.get(k) if higher else
-        (1.0 - data[k] if isinstance(data.get(k), (int, float)) else None)
-        for k, higher in ERASING_PARTS
+    dataset_utilities = [
+        _component_hmean(data, components, skip_missing=True)
+        for components in UTILITY_DATASETS.values()
     ]
-    eq = _hmean(eq_parts)
-    # Second-stage HM: balance the erasing-strength bundle against fluency 50/50 so a
-    # method that forgets *fluently* scores above one that forgets via gibberish.
-    fk, _ = ERASING_FLUENCY
-    if eq is not None and isinstance(data.get(fk), (int, float)):
-        eq = _hmean([eq, data[fk]])
-    if eq is not None:
-        data["erasing_quality"] = eq
+    dataset_utilities = [value for value in dataset_utilities if value is not None]
+    model_utility = _hmean(dataset_utilities)
+    if model_utility is not None:
+        data["model_utility"] = model_utility
 
-    lq_parts = [
-        (LINGUISTIC_MAX - data[k] if isinstance(data.get(k), (int, float)) else None)
-        if comp else data.get(k)
-        for k, comp in LINGUISTIC_LQ_PARTS
-    ]
-    lq = _amean(lq_parts)
-    if lq is not None:
-        data["linguistic_quality"] = lq
+    linguistic_quality = _component_hmean(data, LINGUISTIC_COMPONENTS)
+    if linguistic_quality is not None:
+        data["linguistic_quality"] = linguistic_quality
+
+    if all(
+        isinstance(value, (int, float))
+        for value in (erase_quality, model_utility, linguistic_quality)
+    ):
+        data["final_average"] = float(
+            (erase_quality + model_utility + linguistic_quality) / 3.0
+        )
+
     return data
 
 
@@ -243,7 +313,9 @@ def collect_rows(model, forget_split, mode="both"):
             continue
         data = load_summary(md)
         if data is not None:
-            methods.append((method, data))
+            display_method = base_method if mode == "forget_only" else method
+            display_method = DISPLAY_METHOD.get(display_method, display_method)
+            methods.append((display_method, data))
     methods.sort(key=lambda r: _method_rank(r[0]))
     rows.extend(methods)
     return rows
@@ -279,6 +351,7 @@ def collect_rows_muse(model, split, mode="both"):
         method = md.name.split("Diffusion")[-1]
         if method.endswith(MUSE_FORGET_ONLY_SUFFIX):
             method = method[: -len(MUSE_FORGET_ONLY_SUFFIX)]
+        method = DISPLAY_METHOD.get(method, method)
         _, base_method = _split_forget_only(_strip_epochs(method))
         if mode == "simple" and not _is_simple_method(base_method):
             continue
@@ -300,9 +373,9 @@ def _group_header(groups):
     return group, metric
 
 
-def _render_block(data, col_best, groups, judge_metrics, force_white=False):
+def _render_block(data, col_ranks, groups, judge_metrics, force_white=False):
     """Render one model's cells for a row. force_white tags the whole block white
-    (used for the base/retain reference rows) instead of the per-column-best green."""
+    (used for the base/retain reference rows) instead of method ranking."""
     blocks = []
     for _, cols in groups:
         block = ""
@@ -311,13 +384,24 @@ def _render_block(data, col_best, groups, judge_metrics, force_white=False):
             if not isinstance(val, (int, float)):
                 block += f"{'-':>{COL_W}}"
                 continue
-            text = f"{val:{COL_W}.2f}" if key in judge_metrics else f"{val * 100:{COL_W}.2f}"
-            if not force_white and val == col_best.get(key):
-                text = f"{GREEN}{text}{RESET}"
+            if key in FINAL_SCORE_METRICS:
+                display_value = val
+            elif key in judge_metrics:
+                display_value = val * 10.0
+            else:
+                display_value = val * 100.0
+            text = f"{display_value:{COL_W}.2f}"
+            rank = col_ranks.get(key, {}).get(val)
+            if not force_white and rank == 1:
+                text = f"{TOP_ONE}{text}{RESET}"
+            elif not force_white and rank == 2:
+                text = f"{TOP_TWO}{text}{RESET}"
             block += text
         blocks.append(block)
     rendered = SEP.join(blocks)
-    return f"{WHITE}{rendered}{RESET}" if force_white else rendered
+    if force_white:
+        return f"{WHITE}{rendered}{RESET}"
+    return rendered
 
 
 def _method_rank(label):
@@ -354,15 +438,23 @@ def print_table(title, model_rows, models, retain_name, groups, cols, judge_metr
     labels = sorted(all_labels, key=lambda lbl: _label_order(lbl, retain_name))
     label_w = max([LABEL_W] + [len(lbl) for lbl in labels])
     widths = [label_w] + [block_w] * len(models)
-    col_best_per_model = {}
+    col_ranks_per_model = {}
     for model in models:
         rows = model_rows.get(model, {})
-        col_best = {}
+        col_ranks = {}
         for key, _ in cols:
-            vals = [d[key] for d in rows.values() if isinstance(d.get(key), (int, float))]
+            vals = [
+                data[key]
+                for label, data in rows.items()
+                if label not in {"base", retain_name}
+                and isinstance(data.get(key), (int, float))
+            ]
             if vals:
-                col_best[key] = min(vals) if key in lower_better else max(vals)
-        col_best_per_model[model] = col_best
+                ranked = sorted(set(vals), reverse=key not in lower_better)
+                col_ranks[key] = {
+                    value: rank for rank, value in enumerate(ranked[:2], start=1)
+                }
+        col_ranks_per_model[model] = col_ranks
 
     print(f"\n## {title}")
     print(_rule("╭", "┬", "╮", widths))
@@ -372,7 +464,11 @@ def print_table(title, model_rows, models, retain_name, groups, cols, judge_metr
     print(_rule("├", "┼", "┤", widths))
     for label in labels:
         is_ref = label == "base" or label == retain_name
-        segments = [f"{WHITE}{label}{RESET}" if is_ref else label]
+        if is_ref:
+            display_label = f"{WHITE}{label}{RESET}"
+        else:
+            display_label = label
+        segments = [display_label]
         for model in models:
             data = model_rows.get(model, {}).get(label)
             if data is None:
@@ -380,7 +476,7 @@ def print_table(title, model_rows, models, retain_name, groups, cols, judge_metr
             else:
                 segments.append(
                     _render_block(
-                        data, col_best_per_model[model], groups, judge_metrics,
+                        data, col_ranks_per_model[model], groups, judge_metrics,
                         force_white=is_ref,
                     )
                 )
@@ -389,23 +485,31 @@ def print_table(title, model_rows, models, retain_name, groups, cols, judge_metr
 
 
 def main():
+    global USE_SYNTHETIC_RDU_FLUENCY
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument(
         "--mode",
         choices=["both", "forget_only", "simple"],
-        default="both",
+        default="forget_only",
         help="'both' shows every method variant; 'forget_only' shows the "
         "_forgetonly runs plus retain-free-by-design methods like TSD (all other "
-        "no-suffix runs dropped, GradAscent included); 'simple' shows only the "
+        "no-suffix runs dropped, GA included); 'simple' shows only the "
         "headline TSD run and the standard baselines, dropping all TSD/SimpleTSD "
         "sweep variants. Reference rows always show.",
     )
+    ap.add_argument(
+        "--synthetic-rdu-fluency",
+        action="store_true",
+        help="Use clearly labeled synthetic RDU forget fluency files instead of "
+        "the original judge aggregate.",
+    )
     args = ap.parse_args()
+    USE_SYNTHETIC_RDU_FLUENCY = args.synthetic_rdu_fluency
+    synthetic_label = " [SYNTHETIC RDU FLUENCY]" if USE_SYNTHETIC_RDU_FLUENCY else ""
     for forget_split in FORGET_SPLITS:
-        models = discover_models()
         model_rows = {}
         present = []
-        for model in models:
+        for model in discover_models():
             block = dict(collect_rows(model, forget_split, mode=args.mode))
             if not block:
                 continue
@@ -413,25 +517,9 @@ def main():
             model_rows[model] = block
         if model_rows:
             print_table(
-                forget_split, model_rows, present, RETAIN_FOR[forget_split],
+                f"{forget_split}{synthetic_label}", model_rows, present,
+                RETAIN_FOR[forget_split],
                 GROUPS, COLS, JUDGE_METRICS, LOWER_BETTER,
-            )
-
-    muse_models = discover_models_muse()
-    for split in MUSE_SPLITS:
-        model_rows = {}
-        present = []
-        for model in muse_models:
-            block = dict(collect_rows_muse(model, split, mode=args.mode))
-            if not block:
-                continue
-            present.append(model)
-            model_rows[model] = block
-        if model_rows:
-            print_table(
-                f"MUSE {split}  (Forget f_VM/f_KM/f_ES ↓ better, Retain ret_KM ↑ better)",
-                model_rows, present, None,
-                GROUPS_MUSE, COLS_MUSE, JUDGE_METRICS_MUSE, LOWER_BETTER_MUSE,
             )
     print()
 

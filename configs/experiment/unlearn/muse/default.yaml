@@ -2,7 +2,7 @@
 
 defaults:
   - override /model: Llama-2-7b-hf
-  - override /trainer: GradAscent
+  - override /trainer: GA
   - override /data: unlearn
   - override /data/datasets@data.forget: MUSE_forget
   - override /data/datasets@data.retain: MUSE_retain

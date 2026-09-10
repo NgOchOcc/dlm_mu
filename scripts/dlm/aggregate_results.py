@@ -30,7 +30,7 @@ RAW_COLS = {"forget_truth_ratio"}
 
 METHOD_ORDER = {
     "base": 0, "full": 1, "full_cont": 2,
-    "GradAscent": 3, "GradDiff": 4, "NPO": 5, "SimNPO": 6, "WGA": 7,
+    "GA": 3, "GradAscent": 3, "GradDiff": 4, "NPO": 5, "SimNPO": 6, "WGA": 7,
 }
 
 
