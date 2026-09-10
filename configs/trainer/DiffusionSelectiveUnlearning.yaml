@@ -1,0 +1,8 @@
+defaults:
+  - DiffusionFinetune
+
+handler: DiffusionSelectiveUnlearning
+method_args:
+  # Entity-dependent semantic suppression strength. beta=0 reduces the target
+  # to pure entity-counterfactual teacher distillation.
+  beta: 1.0

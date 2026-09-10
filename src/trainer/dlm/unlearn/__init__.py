@@ -11,6 +11,7 @@ from trainer.dlm.unlearn.tsd import DiffusionTSD
 from trainer.dlm.unlearn.simple_tsd import DiffusionSimpleTSD
 from trainer.dlm.unlearn.semantic_unlearn import DiffusionSemanticUnlearn
 from trainer.dlm.unlearn.auto_unlearning import DiffusionAutoUnlearning
+from trainer.dlm.unlearn.selective_unlearning import DiffusionSelectiveUnlearning
 from trainer.dlm.unlearn.simple_tsd_qmask import DiffusionSimpleTSDQMask
 from trainer.dlm.unlearn.uniform_tsd import DiffusionUTSD
 from trainer.dlm.unlearn.concept_subspace import DiffusionCSD
@@ -31,6 +32,7 @@ __all__ = [
     "DiffusionSimpleTSD",
     "DiffusionSemanticUnlearn",
     "DiffusionAutoUnlearning",
+    "DiffusionSelectiveUnlearning",
     "DiffusionSimpleTSDQMask",
     "DiffusionUTSD",
     "DiffusionCSD",
