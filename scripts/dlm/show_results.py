@@ -4,8 +4,6 @@ import re
 import sys
 from pathlib import Path
 
-import scipy as sc
-
 EVAL_DIR = Path("saves/eval")
 USE_SYNTHETIC_RDU_FLUENCY = False
 ERASING_KNOWLEDGE_COMPONENTS = {
@@ -37,9 +35,9 @@ LINGUISTIC_COMPONENTS = {
 }
 
 def _hmean(vals):
-    if any(not isinstance(v, (int, float)) for v in vals):
+    if not vals or any(not isinstance(v, (int, float)) for v in vals):
         return None
-    return 0.0 if min(vals) <= 0.0 else float(sc.stats.hmean(vals))
+    return 0.0 if min(vals) <= 0.0 else float(len(vals) / sum(1.0 / v for v in vals))
 
 
 def _amean(vals):
@@ -91,6 +89,42 @@ GROUPS = [
     ]),
 ]
 
+DETAIL_GROUPS = [
+    ("Forget", [
+        ("forget_Q_A_Prob", "f_P"),
+        ("forget_Q_A_ROUGE", "f_R"),
+        ("forget_truth_ratio", "f_TR"),
+        ("forget_Q_A_Relevance", "f_Rel"),
+        ("forget_Q_A_Correctness", "f_Cor"),
+        ("forget_Q_A_Fluency", "f_Flu"),
+    ]),
+    ("Retain", [
+        ("retain_Q_A_Prob", "ret_P"),
+        ("retain_Q_A_ROUGE", "ret_R"),
+        ("retain_Q_A_Relevance", "ret_Rel"),
+        ("retain_Q_A_Correctness", "ret_Cor"),
+        ("retain_Q_A_Fluency", "ret_Flu"),
+    ]),
+    ("Real Authors", [
+        ("ra_Q_A_ROUGE", "ra_R"),
+        ("ra_Q_A_Relevance", "ra_Rel"),
+        ("ra_Q_A_Correctness", "ra_Cor"),
+        ("ra_Q_A_Fluency", "ra_Flu"),
+    ]),
+    ("World Facts", [
+        ("wf_Q_A_ROUGE", "wf_R"),
+        ("wf_Q_A_Relevance", "wf_Rel"),
+        ("wf_Q_A_Correctness", "wf_Cor"),
+        ("wf_Q_A_Fluency", "wf_Flu"),
+    ]),
+    ("Final Scores", [
+        ("erase_quality", "EQ"),
+        ("model_utility", "MU"),
+        ("linguistic_quality", "LQ"),
+        ("final_average", "AVG"),
+    ]),
+]
+
 JUDGE_METRICS = {
     "forget_Q_A_Fluency",
     "forget_Q_A_Relevance",
@@ -118,7 +152,7 @@ FINAL_SCORE_METRICS = {
 COLS = [(key, header) for _, cols in GROUPS for key, header in cols]
 METHOD_ORDER = {
     "GA": 4, "GradAscent": 4, "GradDiff": 5, "NPO": 6, "SimNPO": 7,
-    "WGA": 8, "RDU": 9, "RepelGenDistill": 9,
+    "WGA": 8, "RDU": 1000, "RepelGenDistill": 1000,
 }
 
 FORGET_ONLY_SUFFIXES = ("_forgetonly", "_forget_only")
@@ -162,18 +196,20 @@ def _is_simple_method(base_method):
     """True for a clean baseline or the bare TSD run; False for any sweep variant."""
     return base_method in SIMPLE_METHODS
 
-# Optional trailing "_<N>epochs" task-name tag (written by unlearn.sh with
-# EPOCH_IN_NAME=1) recording how long a run trained, so epoch sweeps of one method
-# land in distinct dirs. Stripped before a method is categorised / ranked, but
-# kept in the printed row label.
-_EPOCHS_RE = re.compile(r"_(\d+)epochs$")
+# Optional epoch tags used by training/evaluation scripts. They are stripped
+# before method categorisation but retained in the displayed row label.
+_EPOCHS_RE = re.compile(r"_(?:(\d+)epochs|ep(\d+))$")
 
 def _strip_epochs(label):
     return _EPOCHS_RE.sub("", label)
 
 def _epochs_of(label):
     m = _EPOCHS_RE.search(label)
-    return int(m.group(1)) if m else 0
+    return int(m.group(1) or m.group(2)) if m else 0
+
+def _epoch_label(label):
+    epoch = _epochs_of(label)
+    return f"_ep{epoch:02d}" if epoch else ""
 
 FORGET_SPLITS = ["forget01", "forget05", "forget10"]
 RETAIN_FOR = {"forget01": "retain99", "forget05": "retain95", "forget10": "retain90"}
@@ -230,13 +266,19 @@ def load_summary(eval_dir):
     summary = noprompt if noprompt.exists() else eval_dir / "TOFU_SUMMARY.json"
     if not summary.exists():
         return None
-    data = json.loads(summary.read_text())
+    try:
+        data = json.loads(summary.read_text())
+    except (OSError, json.JSONDecodeError):
+        return None
     if USE_SYNTHETIC_RDU_FLUENCY and eval_dir.name.endswith(
         ("DiffusionRDU", "DiffusionRepelGenDistill")
     ):
         synthetic_path = eval_dir / "forget_Q_A_Fluency_synthetic.json"
         if synthetic_path.exists():
-            synthetic = json.loads(synthetic_path.read_text())
+            try:
+                synthetic = json.loads(synthetic_path.read_text())
+            except (OSError, json.JSONDecodeError):
+                synthetic = {}
             synthetic_value = synthetic.get("agg_value")
             if isinstance(synthetic_value, (int, float)):
                 data["forget_Q_A_Fluency"] = synthetic_value
@@ -255,7 +297,7 @@ def load_summary(eval_dir):
     if model_utility is not None:
         data["model_utility"] = model_utility
 
-    linguistic_quality = _component_hmean(data, LINGUISTIC_COMPONENTS)
+    linguistic_quality = _component_amean(data, LINGUISTIC_COMPONENTS)
     if linguistic_quality is not None:
         data["linguistic_quality"] = linguistic_quality
 
@@ -270,13 +312,47 @@ def load_summary(eval_dir):
     return data
 
 
+def _forget_split_for(eval_dir):
+    relative = eval_dir.relative_to(EVAL_DIR)
+    for part in relative.parts[:-1]:
+        if part in FORGET_SPLITS:
+            return part
+
+    config = eval_dir / ".hydra/config.yaml"
+    if not config.exists():
+        return None
+    try:
+        text = config.read_text()
+    except OSError:
+        return None
+    match = re.search(
+        r"^\s*forget_split:\s*(forget(?:01|05|10))\s*$",
+        text,
+        re.MULTILINE,
+    )
+    return match.group(1) if match else None
+
+
+def discover_method_runs():
+    runs = []
+    for summary in EVAL_DIR.rglob("TOFU_SUMMARY.json"):
+        eval_dir = summary.parent
+        match = re.match(r"tofu_(.+?)_Diffusion(.+)$", eval_dir.name)
+        if not match:
+            continue
+        forget_split = _forget_split_for(eval_dir)
+        if forget_split is not None:
+            runs.append((forget_split, match.group(1), match.group(2), eval_dir))
+    return sorted(runs, key=lambda item: str(item[3]))
+
+
+def _run_source_label(eval_dir, forget_split):
+    parent = eval_dir.parent.relative_to(EVAL_DIR)
+    return "" if parent in {Path("."), Path(forget_split)} else f"{parent.as_posix()}/"
+
+
 def discover_models():
-    models = set()
-    for fs in FORGET_SPLITS:
-        for md in (EVAL_DIR / fs).glob("tofu_*_Diffusion*"):
-            m = re.match(r"tofu_(.+)_Diffusion\w+$", md.name)
-            if m:
-                models.add(m.group(1))
+    models = {model for _, model, _, _ in discover_method_runs()}
     for rd in EVAL_DIR.glob("tofu_*_retain*"):
         m = re.match(r"tofu_(.+)_retain\d+", rd.name)
         if m:
@@ -296,8 +372,9 @@ def collect_rows(model, forget_split, mode="both"):
         rows.append((retain, retain_data))
 
     methods = []
-    for md in (EVAL_DIR / forget_split).glob(f"tofu_{model}_Diffusion*"):
-        method = md.name.split("Diffusion")[-1]
+    for split, run_model, method, md in discover_method_runs():
+        if split != forget_split or run_model != model:
+            continue
         core = _strip_epochs(method)
         is_forget_only, base_method = _split_forget_only(core)
         if base_method in EXCLUDE_METHODS or _is_diagnostic(method):
@@ -313,9 +390,14 @@ def collect_rows(model, forget_split, mode="both"):
             continue
         data = load_summary(md)
         if data is not None:
-            display_method = base_method if mode == "forget_only" else method
+            source = _run_source_label(md, forget_split)
+            display_method = (
+                f"{base_method}{_epoch_label(method)}"
+                if mode == "forget_only"
+                else method
+            )
             display_method = DISPLAY_METHOD.get(display_method, display_method)
-            methods.append((display_method, data))
+            methods.append((f"{source}{display_method}", data))
     methods.sort(key=lambda r: _method_rank(r[0]))
     rows.extend(methods)
     return rows
@@ -327,7 +409,10 @@ def load_summary_muse(eval_dir):
     summary = eval_dir / "MUSE_SUMMARY.json"
     if not summary.exists():
         return None
-    return json.loads(summary.read_text())
+    try:
+        return json.loads(summary.read_text())
+    except (OSError, json.JSONDecodeError):
+        return None
 
 
 def discover_models_muse():
@@ -364,7 +449,7 @@ def collect_rows_muse(model, split, mode="both"):
 
 
 LABEL_W = 14
-COL_W = 7
+COL_W = 8
 SEP = " │ "
 
 def _group_header(groups):
@@ -387,9 +472,9 @@ def _render_block(data, col_ranks, groups, judge_metrics, force_white=False):
             if key in FINAL_SCORE_METRICS:
                 display_value = val
             elif key in judge_metrics:
-                display_value = val * 10.0
+                display_value = val / 10.0
             else:
-                display_value = val * 100.0
+                display_value = val
             text = f"{display_value:{COL_W}.2f}"
             rank = col_ranks.get(key, {}).get(val)
             if not force_white and rank == 1:
@@ -405,7 +490,7 @@ def _render_block(data, col_ranks, groups, judge_metrics, force_white=False):
 
 
 def _method_rank(label):
-    core = _strip_epochs(label)
+    core = _strip_epochs(label.rsplit("/", 1)[-1])
     is_forget_only, base_method = _split_forget_only(core)
     return (METHOD_ORDER.get(base_method, 99), base_method, is_forget_only, _epochs_of(label))
 
@@ -485,12 +570,18 @@ def print_table(title, model_rows, models, retain_name, groups, cols, judge_metr
 
 
 def main():
-    global USE_SYNTHETIC_RDU_FLUENCY
+    global EVAL_DIR, USE_SYNTHETIC_RDU_FLUENCY
     ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument(
+        "--eval-dir",
+        type=Path,
+        default=EVAL_DIR,
+        help="Evaluation root to scan recursively (default: saves/eval).",
+    )
     ap.add_argument(
         "--mode",
         choices=["both", "forget_only", "simple"],
-        default="forget_only",
+        default="both",
         help="'both' shows every method variant; 'forget_only' shows the "
         "_forgetonly runs plus retain-free-by-design methods like TSD (all other "
         "no-suffix runs dropped, GA included); 'simple' shows only the "
@@ -503,9 +594,19 @@ def main():
         help="Use clearly labeled synthetic RDU forget fluency files instead of "
         "the original judge aggregate.",
     )
+    ap.add_argument(
+        "--detail",
+        action="store_true",
+        help="Show all component metrics used by EQ, MU, and LQ in addition "
+        "to the four final scores.",
+    )
     args = ap.parse_args()
+    EVAL_DIR = args.eval_dir
     USE_SYNTHETIC_RDU_FLUENCY = args.synthetic_rdu_fluency
     synthetic_label = " [SYNTHETIC RDU FLUENCY]" if USE_SYNTHETIC_RDU_FLUENCY else ""
+    groups = DETAIL_GROUPS if args.detail else GROUPS
+    cols = [(key, header) for _, group_cols in groups for key, header in group_cols]
+    detail_label = " [DETAIL]" if args.detail else ""
     for forget_split in FORGET_SPLITS:
         model_rows = {}
         present = []
@@ -516,11 +617,19 @@ def main():
             present.append(model)
             model_rows[model] = block
         if model_rows:
-            print_table(
-                f"{forget_split}{synthetic_label}", model_rows, present,
-                RETAIN_FOR[forget_split],
-                GROUPS, COLS, JUDGE_METRICS, LOWER_BETTER,
-            )
+            if args.detail:
+                for model in present:
+                    print_table(
+                        f"{forget_split} — {model}{synthetic_label}{detail_label}",
+                        {model: model_rows[model]}, [model], RETAIN_FOR[forget_split],
+                        groups, cols, JUDGE_METRICS, LOWER_BETTER,
+                    )
+            else:
+                print_table(
+                    f"{forget_split}{synthetic_label}", model_rows, present,
+                    RETAIN_FOR[forget_split],
+                    groups, cols, JUDGE_METRICS, LOWER_BETTER,
+                )
     print()
 
 if __name__ == "__main__":

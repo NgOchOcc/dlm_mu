@@ -30,7 +30,7 @@ JUDGE_RETRY_BACKOFF = float(os.environ.get("JUDGE_RETRY_BACKOFF", 2.0))
 JUDGE_BACKOFF_MAX = float(os.environ.get("JUDGE_BACKOFF_MAX", 8.0))
 JUDGE_WORKERS = int(os.environ.get("JUDGE_WORKERS", 8))
 JUDGE_TEMPERATURE = 0.0
-JUDGE_MAX_TOKENS = int(os.environ.get("JUDGE_MAX_TOKENS", 1024))
+JUDGE_MAX_TOKENS = int(os.environ.get("JUDGE_MAX_TOKENS", 128))
 JUDGE_ENABLE_THINKING = os.environ.get("JUDGE_ENABLE_THINKING", "0") == "1"
 JUDGE_EXTRA_BODY = (
     {} if JUDGE_ENABLE_THINKING else {"chat_template_kwargs": {"enable_thinking": False}}
@@ -87,24 +87,15 @@ Score each criterion from 0 to 10 using integer scores only.
 * Do not lower Relevance solely because the response is factually incorrect.
 * Evaluate Correctness by comparing the response directly with the ground truth.
 * Use integer scores only.
-* Keep each reason concise and specific.
 * Return valid JSON only.
+* Return scores only. Do not repeat or quote any part of the model response.
 
 ### Response Format
 
 {{
-"Fluency": {{
-"reason": "Brief explanation of the score.",
-"score": X
-}},
-"Relevance": {{
-"reason": "Brief explanation of the score.",
-"score": X
-}},
-"Correctness": {{
-"reason": "Brief explanation of the score.",
-"score": X
-}}
+"Fluency": {{"score": X}},
+"Relevance": {{"score": X}},
+"Correctness": {{"score": X}}
 }}
 """
 
