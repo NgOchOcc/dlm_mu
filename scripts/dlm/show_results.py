@@ -81,9 +81,30 @@ def _component_amean(data, components):
 
 
 GROUPS = [
+<<<<<<< HEAD
     ("Final Scores", [
         ("erase_quality", "EQ"),
         ("model_utility", "MU"),
+=======
+    ("Erasing Quality", [
+        ("forget_Q_A_Prob", "f_P"),
+        ("forget_Q_A_ROUGE", "f_R"),
+        ("forget_truth_ratio", "f_TR"),
+        ("erasing_quality", "EQ"),
+        ("forget_Q_A_gibberish", "f_Flu"),
+    ]),
+    ("Retention Quality", [
+        ("retain_Q_A_ROUGE", "ret_R"),
+        ("ra_Q_A_ROUGE", "ra_R"),
+        ("wf_Q_A_ROUGE", "wf_R"),
+        ("model_utility", "RQ"),
+    ]),
+    ("Linguistic Quality", [
+        ("forget_Q_A_Fluency", "L_Flu"),
+        ("forget_Q_A_Relevance", "L_Rel"),
+        ("forget_Q_A_Hallucination", "L_Hal"),
+        ("forget_Q_A_Correctness", "L_Cor"),
+>>>>>>> 0857b2bd3d2f6c471e8b374890a2a89321d9b766
         ("linguistic_quality", "LQ"),
         ("final_average", "AVG"),
     ]),
@@ -196,9 +217,17 @@ def _is_simple_method(base_method):
     """True for a clean baseline or the bare TSD run; False for any sweep variant."""
     return base_method in SIMPLE_METHODS
 
+<<<<<<< HEAD
 # Optional epoch tags used by training/evaluation scripts. They are stripped
 # before method categorisation but retained in the displayed row label.
 _EPOCHS_RE = re.compile(r"_(?:(\d+)epochs|ep(\d+))$")
+=======
+# Optional trailing "_<N>epochs" task-name tag (written by unlearn.sh with
+# EPOCH_IN_NAME=1) recording how long a run trained, so epoch sweeps of one method
+# land in distinct dirs. Stripped before a method is categorised / ranked, but
+# kept in the printed row label.
+_EPOCHS_RE = re.compile(r"_(\d+)epochs$")
+>>>>>>> 0857b2bd3d2f6c471e8b374890a2a89321d9b766
 
 def _strip_epochs(label):
     return _EPOCHS_RE.sub("", label)
@@ -452,7 +481,10 @@ def collect_rows_muse(model, split, mode="both"):
         method = md.name.split("Diffusion")[-1]
         if method.endswith(MUSE_FORGET_ONLY_SUFFIX):
             method = method[: -len(MUSE_FORGET_ONLY_SUFFIX)]
+<<<<<<< HEAD
         method = DISPLAY_METHOD.get(method, method)
+=======
+>>>>>>> 0857b2bd3d2f6c471e8b374890a2a89321d9b766
         _, base_method = _split_forget_only(_strip_epochs(method))
         if mode == "simple" and not _is_simple_method(base_method):
             continue
@@ -600,6 +632,7 @@ def main():
         default="both",
         help="'both' shows every method variant; 'forget_only' shows the "
         "_forgetonly runs plus retain-free-by-design methods like TSD (all other "
+<<<<<<< HEAD
         "no-suffix runs dropped, GA included); 'simple' shows only the "
         "headline TSD run and the standard baselines, dropping all TSD/SimpleTSD "
         "sweep variants. Reference rows always show.",
@@ -628,6 +661,11 @@ def main():
         default=None,
         help="Only show methods matching this case-insensitive name prefix, plus "
         "their base and retain reference rows.",
+=======
+        "no-suffix runs dropped, GradAscent included); 'simple' shows only the "
+        "headline TSD run and the standard baselines, dropping all TSD/SimpleTSD "
+        "sweep variants. Reference rows always show.",
+>>>>>>> 0857b2bd3d2f6c471e8b374890a2a89321d9b766
     )
     args = ap.parse_args()
     EVAL_DIR = args.eval_dir
@@ -654,6 +692,7 @@ def main():
             present.append(model)
             model_rows[model] = block
         if model_rows:
+<<<<<<< HEAD
             if args.detail:
                 for model in present:
                     print_table(
@@ -667,6 +706,29 @@ def main():
                     RETAIN_FOR[forget_split],
                     groups, cols, JUDGE_METRICS, LOWER_BETTER,
                 )
+=======
+            print_table(
+                forget_split, model_rows, present, RETAIN_FOR[forget_split],
+                GROUPS, COLS, JUDGE_METRICS, LOWER_BETTER,
+            )
+
+    muse_models = discover_models_muse()
+    for split in MUSE_SPLITS:
+        model_rows = {}
+        present = []
+        for model in muse_models:
+            block = dict(collect_rows_muse(model, split, mode=args.mode))
+            if not block:
+                continue
+            present.append(model)
+            model_rows[model] = block
+        if model_rows:
+            print_table(
+                f"MUSE {split}  (Forget f_VM/f_KM/f_ES ↓ better, Retain ret_KM ↑ better)",
+                model_rows, present, None,
+                GROUPS_MUSE, COLS_MUSE, JUDGE_METRICS_MUSE, LOWER_BETTER_MUSE,
+            )
+>>>>>>> 0857b2bd3d2f6c471e8b374890a2a89321d9b766
     print()
 
 if __name__ == "__main__":

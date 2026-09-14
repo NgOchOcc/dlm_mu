@@ -1,0 +1,52 @@
+# @package _global_
+# Masked-diffusion (LLaDA/Dream) SBRU unlearning on TOFU (docs/idea.tex).
+# Retain-FREE: SBRU repels the soft predicted embedding out of a bounded kernel
+# ball around the forget region and attracts it toward a promptless anchor a =
+# E^T p_theta0(.|m, y_t) -- the generic linguistic prior -- so utility is held by
+# the anchor term L_anc, NOT by a retain NLL. The retain dataset is dropped
+# entirely, matching the GAP / AURA / TSD forget-only precedent, and lam_ret is 0.
+# For a retain-NLL ablation, add
+#   +data/datasets@data.retain=TOFU_QA_retain trainer.method_args.lam_ret=<a>
+# on the CLI.
+defaults:
+  - override /model: LLaDA-8B-Instruct
+  - override /trainer: DiffusionSBRU
+  - override /data: unlearn
+  - override /data/datasets@data.forget: TOFU_QA_forget
+  - override /data/datasets@data.retain: null
+  - override /eval: tofu_dlm
+
+forget_split: forget10
+retain_split: retain90
+holdout_split: holdout10
+question_key: "question"
+
+# Dream needs right-shifted logits and the CART loss weighting; LLaDA does not.
+# For Dream, also set `override /model: Dream-v0-Instruct-7B` above and add:
+#   trainer.method_args.right_shift_logits: True
+#   trainer.method_args.loss_weight_type: "cart[geo_p:0.3]"
+#   eval.tofu_dlm.right_shift_logits: True
+
+eval:
+  tofu_dlm:
+    forget_split: ${forget_split}
+    holdout_split: ${holdout_split}
+    overwrite: true
+    question_key: ${question_key}
+
+data:
+  anchor: forget
+  forget:
+    TOFU_QA_forget:
+      args:
+        hf_args:
+          name: ${forget_split}
+
+trainer:
+  args:
+    warmup_epochs: 1.0
+    learning_rate: 1e-5
+    weight_decay: 0.01
+    num_train_epochs: 9
+
+task_name: ???

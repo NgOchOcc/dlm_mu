@@ -1,0 +1,131 @@
+\documentclass{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage{microtype}
+\usepackage{hyperref}
+
+\newcommand{\Df}{\mathcal{D}_{\mathrm f}}
+\newcommand{\V}{\mathcal{V}}
+\newcommand{\Ahat}{\widehat{\mathcal A}}
+\newcommand{\Mset}{\mathcal M}
+\newcommand{\KL}{D_{\mathrm{KL}}}
+
+\title{Simple Token Selection and Trajectory-Selective Distillation}
+\author{}
+\date{}
+
+\begin{document}
+\maketitle
+
+\begin{table}[h]
+\centering
+\caption{Notation used in the algorithms.}
+\label{tab:notation}
+\small
+\renewcommand{\arraystretch}{1.18}
+\begin{tabular}{>{\raggedright\arraybackslash}p{0.20\linewidth}
+                >{\raggedright\arraybackslash}p{0.70\linewidth}}
+\toprule
+\textbf{Symbol} & \textbf{Meaning} \\
+\midrule
+$\Df$ & Forget dataset containing question--answer pairs $(x,y)$. \\
+$x$ & Forget question or prompt. \\
+$y=(y_1,\ldots,y_L)$ & Answer with $L$ tokens. \\
+$\widetilde y$ & Fully masked answer: every answer token is replaced by \texttt{[MASK]}. \\
+$\theta_0$ & Frozen original model used as the teacher. \\
+$\theta$ & Trainable model, initialized from $\theta_0$. \\
+$x_{\varnothing}$ & The same input format as $x$, but with the prompt content removed or masked. \\
+$s_i$ & Prompt-dependence score of answer token $y_i$. \\
+$\tau$ & Threshold used to select forget-token positions. \\
+$\Ahat$ & Selected forget-token positions, $\Ahat=\{i:s_i\geq\tau\}$. \\
+$\Mset$ & Token positions masked in one denoising state. \\
+$y_{\Mset}$ & Partially masked answer produced from mask set $\Mset$. \\
+$p^0_{\Mset,i}$ & Teacher distribution at masked position $i$. \\
+$p^{\theta}_{\Mset,i}$ & Trainable-model distribution at masked position $i$. \\
+$q_{\Mset,i}$ & Edited teacher target used at a selected forget position. \\
+$\rho$ & Mask probability sampled from the model's normal diffusion schedule. \\
+$\alpha$ & Forget-loss weight. A simple default is $\alpha=0.5$. \\
+$\epsilon$ & Small constant for numerical stability, such as $10^{-8}$. \\
+$\V$ & Model vocabulary. \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{algorithm}[h]
+\caption{Optional single-score selection of forget-token positions}
+\label{alg:selection}
+\begin{algorithmic}[1]
+\Require Frozen teacher $p_{\theta_0}$, question $x$, answer $y=(y_1,\ldots,y_L)$, threshold $\tau$, constant $\epsilon$.
+\Ensure Selected token positions $\Ahat$.
+\Statex \textbf{Manual-span option:} If token-level spans are available, use them as $\Ahat$ and skip this algorithm.
+\State Replace every answer token by \texttt{[MASK]} to obtain $\widetilde y$.
+\State Run the teacher once with the question:
+\Statex \hspace{1.5em}$p_i^{\mathrm{cond}} \gets p_{\theta_0}(y_i\mid x,\widetilde y)$ for all $i=1,\ldots,L$.
+\State Run the teacher once without the question content:
+\Statex \hspace{1.5em}$p_i^{\mathrm{base}} \gets p_{\theta_0}(y_i\mid x_{\varnothing},\widetilde y)$ for all $i=1,\ldots,L$.
+\For{$i=1,\ldots,L$}
+    \State $s_i \gets \log(p_i^{\mathrm{cond}}+\epsilon)-\log(p_i^{\mathrm{base}}+\epsilon)$.
+\EndFor
+\State $\Ahat \gets \{i\in\{1,\ldots,L\}:s_i\geq\tau\}$.
+\State \Return $\Ahat$.
+\end{algorithmic}
+\end{algorithm}
+
+\begin{algorithm}[h]
+\caption{Simple trajectory-selective distillation}
+\label{alg:training}
+\begin{algorithmic}[1]
+\Require Frozen teacher $p_{\theta_0}$; trainable model $p_\theta$ with $\theta\gets\theta_0$; examples $(x,y,\Ahat)$; diffusion mask schedule; forget weight $\alpha$; learning rate $\eta$.
+\For{each training step}
+    \State Sample a minibatch of examples $(x,y,\Ahat)$.
+    \State $\mathcal L_{\mathrm{batch}}\gets 0$.
+    \ForAll{$(x,y,\Ahat)$ in the minibatch}
+        \If{$\Ahat=\varnothing$}
+            \State \textbf{continue} \Comment{No token was selected for this example.}
+        \EndIf
+        \State Sample a normal diffusion mask probability $\rho$.
+        \State Mask every answer position independently with probability $\rho$ to obtain $\Mset$.
+        \If{$\Mset\cap\Ahat=\varnothing$}
+            \State Randomly choose one position $j\in\Ahat$ and add it to $\Mset$.
+        \EndIf
+        \State Construct the partially masked answer $y_{\Mset}$.
+        \State Compute $p^0_{\Mset,i}\gets p_{\theta_0}(\cdot\mid x,y_{\Mset},\Mset)$ for all $i\in\Mset$.
+        \State Compute $p^{\theta}_{\Mset,i}\gets p_{\theta}(\cdot\mid x,y_{\Mset},\Mset)$ for all $i\in\Mset$.
+        \State $F\gets\Mset\cap\Ahat$ \Comment{Masked forget positions.}
+        \State $R\gets\Mset\setminus\Ahat$ \Comment{Masked self-distillation positions.}
+        \State $\mathcal L_{\mathrm f}\gets 0$.
+        \ForAll{$i\in F$}
+            \State Copy the teacher distribution: $q_{\Mset,i}\gets p^0_{\Mset,i}$.
+            \State Set the forgotten token probability to zero: $q_{\Mset,i}(y_i)\gets 0$.
+            \State $Z\gets\sum_{v\in\V}q_{\Mset,i}(v)$ \Comment{Compute $Z$ in float32.}
+            \State Renormalize: $q_{\Mset,i}\gets q_{\Mset,i}/Z$.
+            \State $\mathcal L_{\mathrm f}\gets\mathcal L_{\mathrm f}+
+            \KL\!\left(q_{\Mset,i}\,\|\,p^{\theta}_{\Mset,i}\right)$.
+        \EndFor
+        \State $\mathcal L_{\mathrm f}\gets\mathcal L_{\mathrm f}/|F|$.
+        \State $\mathcal L_{\mathrm d}\gets 0$.
+        \ForAll{$i\in R$}
+            \State $\mathcal L_{\mathrm d}\gets\mathcal L_{\mathrm d}+
+            \KL\!\left(p^0_{\Mset,i}\,\|\,p^{\theta}_{\Mset,i}\right)$.
+        \EndFor
+        \If{$R\neq\varnothing$}
+            \State $\mathcal L_{\mathrm d}\gets\mathcal L_{\mathrm d}/|R|$.
+            \State $\mathcal L_{\mathrm{ex}}\gets
+            \alpha\mathcal L_{\mathrm f}+(1-\alpha)\mathcal L_{\mathrm d}$.
+        \Else
+            \State $\mathcal L_{\mathrm{ex}}\gets\mathcal L_{\mathrm f}$.
+        \EndIf
+        \State $\mathcal L_{\mathrm{batch}}\gets\mathcal L_{\mathrm{batch}}+\mathcal L_{\mathrm{ex}}$.
+    \EndFor
+    \State $\theta\gets\theta-\eta\nabla_\theta\mathcal L_{\mathrm{batch}}$.
+\EndFor
+\State \Return $\theta$.
+\end{algorithmic}
+\end{algorithm}
+
+\end{document}

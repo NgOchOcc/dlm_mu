@@ -1,0 +1,22 @@
+# SBRU on the SimpleTSD selection pipeline (SBRU-TSD)
+# (src/trainer/dlm/unlearn/sbru_tsd.py). Inherits the SimpleTSD PCSS selection /
+# cover-masking / self-distillation pipeline, but at the selected forget positions A_hat
+# the forget objective is DiffusionSBRU's bounded soft-embedding repulsion + promptless
+# anchor (instead of demoting the gold token). Retain-free utility comes from the inherited
+# self-distillation on the non-selected answer tokens R = M \ A_hat -- the intended fix for
+# the retain collapse DiffusionSBRU showed under retain-free anchor-only utility.
+defaults:
+  - DiffusionSimpleTSD        # PCSS selection + cover masking + self-distillation + alpha
+
+handler: DiffusionSBRUTSD
+method_args:
+  # alpha: forget weight in L = alpha * mean_F kl_f + (1 - alpha) * mean_R KL(p0 || p_theta).
+  # Lower alpha = more self-distillation (stronger retain-free utility guard). Inherited
+  # from SimpleTSD (default 0.5); override here if the repulsion needs a different balance.
+  alpha: 0.5
+  # --- SBRU repulsion hyperparameters (see configs/trainer/DiffusionSBRU.yaml) ---
+  sigma: 0.05                # repulsion ball radius (embedding-space; 0.05-0.1 works)
+  sigma_anc: 1.0             # anchor ball radius, WIDER than sigma so L_anc still holds e_hat
+  gamma_anc: 1.0             # promptless-anchor attraction weight
+  centre_mode: gold          # gold = E[y_f] | ref_soft = frozen-teacher soft embedding
+  ball_k: 0                  # >0 = semantic ball: mean of k cosine-NN of the gold token

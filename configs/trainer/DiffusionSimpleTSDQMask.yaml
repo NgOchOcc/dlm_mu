@@ -1,0 +1,14 @@
+# Question-masked-target variant of SimpleTSD (src/trainer/dlm/unlearn/simple_tsd_qmask.py).
+# Identical selection / masking / self-distillation pipeline as DiffusionSimpleTSD, but at
+# the selected forget positions A_hat the student is fit to the QUESTION-MASKED teacher
+# p0(.|x_empty, y_M) -- the promptless distribution -- instead of the gold-demoted
+# with-question teacher. Inherits every method_args default from DiffusionSimpleTSD.
+defaults:
+  - DiffusionSimpleTSD
+
+handler: DiffusionSimpleTSDQMask
+method_args:
+  # erase_gold_in_target: additionally demote the gold token (and, under belief demotion,
+  # the teacher top-K) from the promptless target before matching, in case p0(.|x_empty,y_M)
+  # still leaks residual gold mass. false = pure "match the promptless distribution".
+  erase_gold_in_target: false

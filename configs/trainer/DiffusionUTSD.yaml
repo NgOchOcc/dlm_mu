@@ -1,0 +1,16 @@
+# Uniform-target variant of SimpleTSD (src/trainer/dlm/unlearn/uniform_tsd.py).
+# Identical selection / masking / self-distillation pipeline as DiffusionSimpleTSD, but at
+# the selected forget positions A_hat the student is fit to the UNIFORM distribution
+# u = 1/V over the whole vocabulary -- decoupled from the teacher -- instead of the
+# gold-demoted with-question teacher. L_f = KL(u || p_theta) = -log V - mean_v log p_theta.
+# Inherits every method_args default from DiffusionSimpleTSD.
+defaults:
+  - DiffusionSimpleTSD
+
+handler: DiffusionUTSD
+method_args:
+  # mix_beta: probability-space interpolation between the edited-teacher target q
+  # (mix_beta=0, exactly DiffusionSimpleTSD) and the uniform target u (mix_beta=1, the
+  # default -- pure flat). m = (1 - mix_beta) q + mix_beta u. Lower mix_beta keeps more of
+  # the teacher's shape -> better fluency at the forget positions, weaker erasure.
+  mix_beta: 1.0

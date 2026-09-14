@@ -1,0 +1,311 @@
+\documentclass[10pt]{article}
+
+\usepackage[margin=0.8in]{geometry}
+\usepackage{amsmath,amssymb,booktabs}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage{microtype}
+\usepackage{enumitem}
+\usepackage[hidelinks]{hyperref}
+
+\title{GAP-DLM: Implementation Notes for Retain-Free Unlearning\\
+in Masked Diffusion Language Models}
+\author{}
+\date{}
+
+\begin{document}
+\maketitle
+
+\section{Goal}
+
+We assume a pretrained masked diffusion language model (MDLM) and a forget
+set only. The goal is to remove prompt-dependent knowledge associated with
+forget examples while preserving the original model behavior as much as possible.
+
+The method uses a frozen copy of the original model as a teacher. For each
+masked denoising state, we compare the teacher prediction conditioned on the
+forget prompt against the teacher prediction with the prompt removed. We only
+suppress probability mass that is specifically amplified by the forget prompt.
+All other behavior is self-distilled from the original model.
+
+\section{Notation}
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{@{}ll@{}}
+\toprule
+Symbol & Meaning \\
+\midrule
+$\theta_0$ & Frozen original MDLM teacher \\
+$\theta$ & Trainable unlearned MDLM \\
+$\mathcal{D}_f$ & Forget dataset of pairs $(x,y)$ \\
+$x$ & Forget prompt / input \\
+$y=(y_1,\dots,y_L)$ & Target response \\
+$t$ & Diffusion noise / mask level \\
+$y_t$ & Partially masked response at level $t$ \\
+$\mathcal{M}_t$ & Masked token positions in $y_t$ \\
+$m$ & Null prompt \\
+$p^c_{t,i}$ & Teacher distribution conditioned on $(x,y_t)$ \\
+$p^u_{t,i}$ & Teacher distribution conditioned on $(m,y_t)$ \\
+$p^\theta_{t,i}$ & Student distribution conditioned on $(x,y_t)$ \\
+$g_{t,i}(v)$ & Prompt-induced log-probability lift for token $v$ \\
+$\kappa_i$ & Copy-safe indicator for target token $y_i$ \\
+$\alpha_{t,i}$ & Forget strength at token-state pair $(t,i)$ \\
+$\mathcal{S}^{+}_{t,i}$ & Tokens whose probability is increased by the prompt \\
+$q^*_{t,i}$ & Projected teacher target \\
+$\lambda$ & Maximum unlearning strength in $[0,1]$ \\
+$\epsilon$ & Small constant for stable logarithms \\
+\bottomrule
+\end{tabular}
+\caption{Main notation.}
+\end{table}
+
+\section{Teacher Distributions}
+
+For each forget example $(x,y)$, sample a mask level $t$ and construct a
+partially masked response $y_t$. For every masked position $i\in\mathcal{M}_t$,
+compute
+\begin{align}
+p^c_{t,i}(v) &= p_{\theta_0}(v\mid x,y_t),\\
+p^u_{t,i}(v) &= p_{\theta_0}(v\mid m,y_t).
+\end{align}
+
+The conditional distribution $p^c$ is the original model behavior on the
+forget example. The null distribution $p^u$ estimates what can be predicted
+from the partially observed response without using the forget prompt.
+
+\section{Prompt-Attributed Guidance}
+
+Define the prompt-induced log-probability lift
+\begin{equation}
+g_{t,i}(v)=
+\log\left(p^c_{t,i}(v)+\epsilon\right)
+-
+\log\left(p^u_{t,i}(v)+\epsilon\right).
+\end{equation}
+
+A positive value means that the forget prompt increases the probability of
+token $v$. We use the ground-truth token $y_i$ to decide how strongly the
+current token-state pair should be modified:
+\begin{equation}
+\alpha_{t,i}
+=
+\lambda\kappa_i
+\left(1-\exp\left(-[g_{t,i}(y_i)]_+\right)\right),
+\end{equation}
+where $[z]_+=\max(z,0)$.
+
+When $p^c_{t,i}(y_i)>p^u_{t,i}(y_i)$, this is equivalently
+\begin{equation}
+\alpha_{t,i}
+=
+\lambda\kappa_i
+\left(
+1-\frac{p^u_{t,i}(y_i)}{p^c_{t,i}(y_i)}
+\right).
+\end{equation}
+
+If the prompt does not help predict the target token, then
+$\alpha_{t,i}\approx0$ and the original behavior is preserved.
+
+\subsection{Copy-Safe Indicator}
+
+We do not want to erase the ability to copy information explicitly provided in
+the prompt. Define
+\begin{equation}
+\kappa_i=
+\begin{cases}
+0, & \text{if $y_i$ belongs to a span copied from $x$,}\\
+1, & \text{otherwise.}
+\end{cases}
+\end{equation}
+
+A simple implementation can use exact token-span matching or longest common
+subsequence matching between $x$ and $y$.
+
+\section{Positive-Guidance Belief Set}
+
+Instead of suppressing only the labeled target token, suppress all vocabulary
+tokens whose probability is increased by the forget prompt:
+\begin{equation}
+\mathcal{S}^{+}_{t,i}
+=
+\{v:g_{t,i}(v)>0\}.
+\end{equation}
+
+This reduces the chance that probability mass moves from the original target
+token to an alternative token carrying similar information.
+
+\section{Projected Teacher Target}
+
+For every token $v\in\mathcal{S}^{+}_{t,i}$, define an upper bound
+\begin{align}
+u_{t,i}(v)
+&=
+p^c_{t,i}(v)\exp\left(-\alpha_{t,i}g_{t,i}(v)\right)\\
+&=
+\left(p^c_{t,i}(v)\right)^{1-\alpha_{t,i}}
+\left(p^u_{t,i}(v)\right)^{\alpha_{t,i}}.
+\end{align}
+
+The target distribution is the closest distribution to the original
+conditional teacher while respecting these upper bounds:
+\begin{equation}
+q^*_{t,i}
+=
+\arg\min_{q\in\Delta^{|\mathcal{V}|}}
+\mathrm{KL}\left(q\,\|\,p^c_{t,i}\right)
+\end{equation}
+subject to
+\begin{equation}
+q(v)\le u_{t,i}(v),
+\qquad
+\forall v\in\mathcal{S}^{+}_{t,i}.
+\end{equation}
+
+This has the closed-form solution
+\begin{equation}
+q^*_{t,i}(v)=
+\begin{cases}
+u_{t,i}(v), & v\in\mathcal{S}^{+}_{t,i},\\[4pt]
+\gamma_{t,i}p^c_{t,i}(v), & v\notin\mathcal{S}^{+}_{t,i},
+\end{cases}
+\end{equation}
+where
+\begin{equation}
+\gamma_{t,i}
+=
+\frac{
+1-\sum_{v\in\mathcal{S}^{+}_{t,i}}u_{t,i}(v)
+}{
+\sum_{v\notin\mathcal{S}^{+}_{t,i}}p^c_{t,i}(v)
+}.
+\end{equation}
+
+Important special case:
+\begin{equation}
+\alpha_{t,i}=0
+\quad\Longrightarrow\quad
+q^*_{t,i}=p^c_{t,i}.
+\end{equation}
+Thus, token-state pairs without clear forget evidence become ordinary
+self-distillation examples.
+
+\section{Training Objective}
+
+The student is trained with one KL-divergence objective:
+\begin{equation}
+\mathcal{L}_{\mathrm{GAP}}
+=
+\mathbb{E}_{(x,y),t,y_t}
+\left[
+\frac{1}{|\mathcal{M}_t|}
+\sum_{i\in\mathcal{M}_t}
+\mathrm{KL}
+\left(
+\operatorname{sg}[q^*_{t,i}]
+\;\middle\|\;
+p^\theta_{t,i}
+\right)
+\right],
+\end{equation}
+where
+\begin{equation}
+p^\theta_{t,i}=p_\theta(\cdot\mid x,y_t).
+\end{equation}
+The projected teacher target is detached before the student update.
+
+\section{Training Algorithm}
+
+\begin{algorithm}[h]
+\caption{GAP-DLM Retain-Free Unlearning}
+\begin{algorithmic}[1]
+\Require Original model $\theta_0$, forget set $\mathcal{D}_f$, strength $\lambda$
+\State Initialize student $\theta\leftarrow\theta_0$
+\State Freeze $\theta_0$
+\For{each training step}
+    \State Sample minibatch $B\subset\mathcal{D}_f$
+    \For{each $(x,y)\in B$}
+        \State Sample mask level $t$ and construct $y_t$
+        \State Compute copy indicators $\kappa_i$
+        \State Compute teacher distributions
+        \[
+        p^c=p_{\theta_0}(\cdot\mid x,y_t),
+        \qquad
+        p^u=p_{\theta_0}(\cdot\mid m,y_t)
+        \]
+        \For{each masked position $i\in\mathcal{M}_t$}
+            \State $g_i\leftarrow\log(p^c_i+\epsilon)-\log(p^u_i+\epsilon)$
+            \State $\alpha_i\leftarrow
+            \lambda\kappa_i(1-\exp(-[g_i(y_i)]_+))$
+            \State $\mathcal{S}^+_i\leftarrow\{v:g_i(v)>0\}$
+            \State $u_i(v)\leftarrow
+            (p^c_i(v))^{1-\alpha_i}(p^u_i(v))^{\alpha_i}$
+            for $v\in\mathcal{S}^+_i$
+            \State Construct projected target $q^*_i$
+        \EndFor
+        \State Compute student distribution $p^\theta=p_\theta(\cdot\mid x,y_t)$
+        \State Accumulate
+        $\frac{1}{|\mathcal{M}_t|}\sum_{i\in\mathcal{M}_t}
+        \mathrm{KL}(q^*_i\|p^\theta_i)$
+    \EndFor
+    \State Update $\theta$ with gradient descent
+\EndFor
+\State \Return unlearned model $\theta$
+\end{algorithmic}
+\end{algorithm}
+
+\section{Minimal Vectorized Implementation}
+
+For numerical stability, operate in log-space. Given conditional and null
+teacher logits $z^c$ and $z^u$:
+\begin{align}
+\ell^c &= \log\operatorname{softmax}(z^c),\\
+\ell^u &= \log\operatorname{softmax}(z^u),\\
+g &= \ell^c-\ell^u.
+\end{align}
+
+Then compute
+\begin{align}
+\texttt{positive} &= (g>0),\\
+\alpha &= \lambda\kappa
+\left(1-\exp(-\max(g_{\mathrm{target}},0))\right),\\
+\log u &= (1-\alpha)\ell^c+\alpha\ell^u.
+\end{align}
+
+Only masked response positions should contribute to the loss. A direct
+full-vocabulary implementation is recommended first. If memory becomes a
+bottleneck, the projection can later be approximated with the union of the
+top-$K$ tokens from $p^c$ and $p^u$.
+
+\section{Recommended First Implementation}
+
+Use the simplest version first:
+\begin{itemize}[leftmargin=1.5em]
+    \item backbone: LLaDA or Dream;
+    \item one frozen teacher and one trainable student;
+    \item the same masking distribution used by the MDLM training code;
+    \item exact token-span matching for $\kappa_i$;
+    \item $\epsilon=10^{-8}$;
+    \item $\lambda\in\{0.25,0.5,0.75,1.0\}$;
+    \item full-vocabulary projection;
+    \item no hard-mask mining and no extra regularizer.
+\end{itemize}
+
+This version isolates whether conditional--null guidance is enough to identify
+forget-relevant denoising decisions before adding more complex components.
+
+\section{Sanity Checks}
+
+Before full training, verify:
+\begin{enumerate}[leftmargin=1.5em]
+    \item If $p^c(y_i)\approx p^u(y_i)$, then $\alpha_{t,i}\approx0$.
+    \item If $\kappa_i=0$, then $q^*_{t,i}=p^c_{t,i}$.
+    \item If $\alpha_{t,i}=0$, the loss is ordinary self-distillation.
+    \item For every $v\in\mathcal{S}^+_{t,i}$, $q^*_{t,i}(v)\le u_{t,i}(v)$.
+    \item Every projected target satisfies $\sum_v q^*_{t,i}(v)=1$.
+    \item The target $q^*$ is detached before backpropagation.
+\end{enumerate}
+
+\end{document}
