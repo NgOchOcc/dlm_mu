@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
 """Continuously LLM-judge every completed TOFU evaluation directory.
 
-A directory becomes eligible only after ``TOFU_SUMMARY.json`` contains all
-standard TOFU metrics and ``TOFU_EVAL.json`` contains generations for forget,
-retain, real-author (ra), and world-fact (wf). Results are checkpointed per
-sample, so interrupted runs resume without repeating successful judge calls.
+Each dataset (forget, retain, real-author, world-fact) becomes eligible
+independently, as soon as its own ROUGE metric is present in
+``TOFU_SUMMARY.json`` and ``TOFU_EVAL.json`` has generations for it. This
+lets forget-only runs (no retain/ra/wf generations) get their forget split
+judged, and lets runs missing an unrelated metric (e.g. PARA_ROUGE) still
+get judged on the splits they do have. Results are checkpointed per sample,
+so interrupted runs resume without repeating successful judge calls.
 """
 
 import argparse
@@ -39,19 +42,6 @@ DEFAULT_EVAL_ROOT = ROOT / "saves/eval"
 SUMMARY_NAME = "TOFU_SUMMARY.json"
 EVAL_NAME = "TOFU_EVAL.json"
 COMPLETE_MARKER = "LLM_JUDGE_COMPLETE.json"
-
-REQUIRED_BASE_METRICS = {
-    "forget_Q_A_PARA_Prob",
-    "forget_Q_A_PARA_ROUGE",
-    "forget_Q_A_Prob",
-    "forget_Q_A_ROUGE",
-    "forget_truth_ratio",
-    "ra_Q_A_ROUGE",
-    "retain_Q_A_Prob",
-    "retain_Q_A_ROUGE",
-    "retain_Truth_Ratio",
-    "wf_Q_A_ROUGE",
-}
 
 DATASETS = {
     "forget": "forget_Q_A_ROUGE",
@@ -151,21 +141,26 @@ def load_entries(eval_data, dataset):
 
 
 def inspect_directory(eval_dir, datasets):
+    """Datasets that have both a computed ROUGE metric and generations to judge.
+
+    Checked per dataset rather than requiring every standard TOFU metric to be
+    present, so a forget-only run (no retain/ra/wf generations) still gets its
+    forget split judged, and a run missing an unrelated metric still gets
+    judged on the splits it does have.
+    """
     summary = load_json(eval_dir / SUMMARY_NAME)
     eval_data = load_json(eval_dir / EVAL_NAME)
     if not isinstance(summary, dict) or not isinstance(eval_data, dict):
         return None
-    if not REQUIRED_BASE_METRICS.issubset(summary):
-        return None
-    if any(summary[metric] is None for metric in REQUIRED_BASE_METRICS):
-        return None
 
-    entries_by_dataset = {
-        dataset: load_entries(eval_data, dataset) for dataset in datasets
-    }
-    if any(not entries for entries in entries_by_dataset.values()):
-        return None
-    return entries_by_dataset
+    entries_by_dataset = {}
+    for dataset in datasets:
+        if summary.get(DATASETS[dataset]) is None:
+            continue
+        entries = load_entries(eval_data, dataset)
+        if entries:
+            entries_by_dataset[dataset] = entries
+    return entries_by_dataset or None
 
 
 def discover_ready(eval_root, datasets):
@@ -306,9 +301,8 @@ def marker_is_complete(eval_dir, datasets):
     )
 
 
-def evaluate_directory(
-    eval_dir, entries_by_dataset, datasets, overwrite, batch_size, show_progress
-):
+def evaluate_directory(eval_dir, entries_by_dataset, overwrite, batch_size, show_progress):
+    datasets = list(entries_by_dataset)
     if not overwrite and marker_is_complete(eval_dir, datasets):
         return "fixed"
 
@@ -364,7 +358,7 @@ def scan_once(args):
     pending = [
         item
         for item in ready
-        if args.overwrite or not marker_is_complete(item[0], args.datasets)
+        if args.overwrite or not marker_is_complete(item[0], list(item[1]))
     ]
     print(
         f"ready={len(ready)} fixed={len(ready) - len(pending)} pending={len(pending)} "
@@ -374,8 +368,7 @@ def scan_once(args):
     if args.list:
         for eval_dir, entries_by_dataset in pending:
             counts = " ".join(
-                f"{dataset}={len(entries_by_dataset[dataset])}"
-                for dataset in args.datasets
+                f"{dataset}={len(entries)}" for dataset, entries in entries_by_dataset.items()
             )
             print(f"{eval_dir} {counts}")
         return
@@ -385,7 +378,6 @@ def scan_once(args):
             result = evaluate_directory(
                 eval_dir,
                 entries_by_dataset,
-                args.datasets,
                 args.overwrite,
                 args.batch_size,
                 not args.no_progress,

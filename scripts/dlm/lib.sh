@@ -72,8 +72,16 @@ dlm_config() {
             FINETUNE_EPOCHS=150
             SFT_DIR="saves/finetune/tofu_${MODEL}_retain100_150epochs"
             ;;
+        llada1.5)
+            MODEL="LLaDA-1.5"
+            RIGHT_SHIFT=False
+            LOSS_WEIGHT=scheduler
+            GRAD_CKPT=false
+            FINETUNE_EPOCHS=150
+            SFT_DIR="saves/finetune/tofu_${MODEL}_retain100_150epochs"
+            ;;
         *)
-            die "usage: <script> <dream|llada> [gpus] [...]"
+            die "usage: <script> <dream|llada|llada1.5> [gpus] [...]"
             ;;
     esac
     RETAIN90_DIR="saves/finetune/tofu_${MODEL}_retain90_150epochs"

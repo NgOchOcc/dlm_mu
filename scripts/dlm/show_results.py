@@ -211,6 +211,18 @@ def _epoch_label(label):
     epoch = _epochs_of(label)
     return f"_ep{epoch:02d}" if epoch else ""
 
+
+def _method_matches(method, selected_method):
+    if selected_method is None:
+        return True
+    _, method_name = _split_forget_only(_strip_epochs(method.rsplit("/", 1)[-1]))
+    _, selected_name = _split_forget_only(
+        _strip_epochs(selected_method.rsplit("/", 1)[-1])
+    )
+    method_name = DISPLAY_METHOD.get(method_name, method_name)
+    selected_name = DISPLAY_METHOD.get(selected_name, selected_name)
+    return method_name.casefold().startswith(selected_name.casefold())
+
 FORGET_SPLITS = ["forget01", "forget05", "forget10"]
 RETAIN_FOR = {"forget01": "retain99", "forget05": "retain95", "forget10": "retain90"}
 EXCLUDE_METHODS = {"NullAnchor", "AMTU", "TMOPU", "FCP", "CFTMOPU", "OCPE"}
@@ -360,7 +372,7 @@ def discover_models():
     return sorted(m for m in models if not _is_diagnostic(m))
 
 
-def collect_rows(model, forget_split, mode="both"):
+def collect_rows(model, forget_split, mode="both", selected_method=None):
     rows = []
     base = load_summary(EVAL_DIR / f"tofu_{model}_retain100_{forget_split}")
     if base is not None:
@@ -374,6 +386,8 @@ def collect_rows(model, forget_split, mode="both"):
     methods = []
     for split, run_model, method, md in discover_method_runs():
         if split != forget_split or run_model != model:
+            continue
+        if not _method_matches(method, selected_method):
             continue
         core = _strip_epochs(method)
         is_forget_only, base_method = _split_forget_only(core)
@@ -399,6 +413,8 @@ def collect_rows(model, forget_split, mode="both"):
             display_method = DISPLAY_METHOD.get(display_method, display_method)
             methods.append((f"{source}{display_method}", data))
     methods.sort(key=lambda r: _method_rank(r[0]))
+    if selected_method is not None and not methods:
+        return []
     rows.extend(methods)
     return rows
 
@@ -600,6 +616,19 @@ def main():
         help="Show all component metrics used by EQ, MU, and LQ in addition "
         "to the four final scores.",
     )
+    ap.add_argument(
+        "--split",
+        choices=FORGET_SPLITS,
+        default=None,
+        help="Only show this forget split (default: show forget01, forget05, "
+        "and forget10).",
+    )
+    ap.add_argument(
+        "--method",
+        default=None,
+        help="Only show methods matching this case-insensitive name prefix, plus "
+        "their base and retain reference rows.",
+    )
     args = ap.parse_args()
     EVAL_DIR = args.eval_dir
     USE_SYNTHETIC_RDU_FLUENCY = args.synthetic_rdu_fluency
@@ -607,11 +636,19 @@ def main():
     groups = DETAIL_GROUPS if args.detail else GROUPS
     cols = [(key, header) for _, group_cols in groups for key, header in group_cols]
     detail_label = " [DETAIL]" if args.detail else ""
-    for forget_split in FORGET_SPLITS:
+    splits = [args.split] if args.split else FORGET_SPLITS
+    for forget_split in splits:
         model_rows = {}
         present = []
         for model in discover_models():
-            block = dict(collect_rows(model, forget_split, mode=args.mode))
+            block = dict(
+                collect_rows(
+                    model,
+                    forget_split,
+                    mode=args.mode,
+                    selected_method=args.method,
+                )
+            )
             if not block:
                 continue
             present.append(model)

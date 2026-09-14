@@ -21,7 +21,7 @@ export LOSS_WEIGHT_OVERRIDE="${LOSS_WEIGHT_OVERRIDE:-scheduler}"
 source scripts/dlm/lib.sh
 
 gpus="${1:-0,1,2,3}"
-epochs=10
+epochs=20
 save_every=2
 methods=(DiffusionGA DiffusionWGA DiffusionNPO DiffusionSimNPO DiffusionBST)
 
