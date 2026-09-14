@@ -26,7 +26,6 @@ from trainer.dlm.unlearn import (
     DiffusionSimNPO,
     DiffusionWGA,
     DiffusionMDU,
-    DiffusionTSD,
     DiffusionRDU,
     DiffusionADU,
     DiffusionBST,
@@ -130,7 +129,6 @@ _register_trainer(DiffusionNPO)
 _register_trainer(DiffusionSimNPO)
 _register_trainer(DiffusionWGA)
 _register_trainer(DiffusionMDU)
-_register_trainer(DiffusionTSD)
 _register_trainer(DiffusionRDU)
 _register_trainer(DiffusionADU)
 _register_trainer(DiffusionBST)

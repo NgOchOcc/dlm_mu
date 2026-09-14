@@ -1,5 +1,5 @@
 # Repel + generative self-distillation (RDU) for masked-diffusion unlearning.
-# Port of MDU's sbru_forget_mode="repel_gendistill" -- recommended config only.
+# Recommended repel-and-distill configuration.
 # Retain-FREE, forget-set only. Selects prompt-dependent answer tokens (PCSS, Alg. 1),
 # GENERATES a secret-free answer with the frozen teacher (identity-blanked query), distils
 # the student's whole answer span toward it (loss_d) and adds a bounded RBF soft-embedding

@@ -36,7 +36,6 @@ FORGET_ONLY_METHODS = {
     "DiffusionBST",
     "DiffusionRDU",
     "DiffusionRepelGenDistill",
-    "DiffusionTSD",
     "DiffusionADU",
 }
 MODELS = ("tofu_Dream-v0-Instruct-7B_", "tofu_LLaDA-8B-Instruct_")

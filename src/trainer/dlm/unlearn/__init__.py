@@ -5,7 +5,6 @@ from trainer.dlm.unlearn.npo import DiffusionNPO
 from trainer.dlm.unlearn.simnpo import DiffusionSimNPO
 from trainer.dlm.unlearn.wga import DiffusionWGA
 from trainer.dlm.unlearn.mdu import DiffusionMDU
-from trainer.dlm.unlearn.tsd import DiffusionTSD
 from trainer.dlm.unlearn.repel_gendistill import DiffusionRDU
 from trainer.dlm.unlearn.adu import DiffusionADU
 from trainer.dlm.unlearn.bst import DiffusionBST
@@ -18,7 +17,6 @@ __all__ = [
     "DiffusionSimNPO",
     "DiffusionWGA",
     "DiffusionMDU",
-    "DiffusionTSD",
     "DiffusionRDU",
     "DiffusionADU",
     "DiffusionBST",

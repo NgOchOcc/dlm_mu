@@ -4,7 +4,7 @@
 # dependent answer tokens (PCSS, Alg. 1), GENERATES a secret-free answer with the frozen
 # teacher from an identity-blanked query, distils the student toward it (loss_d) and repels
 # the student soft-embedding off the gold secret on the selected positions (loss_f). The
-# retain dataset is dropped entirely, matching the TSD / SimpleTSD / GAP / AURA precedent.
+# retain dataset is dropped entirely, matching other retain-free methods.
 defaults:
   - override /model: LLaDA-8B-Instruct
   - override /trainer: DiffusionRDU

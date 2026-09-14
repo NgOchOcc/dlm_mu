@@ -154,7 +154,6 @@ method_setup() {
             EXP=unlearn/tofu/dlm
             ;;
         DiffusionMDU)       EXP=unlearn/tofu/dlm_mdu ;;
-        DiffusionTSD)       EXP=unlearn/tofu/dlm_tsd ;;
         DiffusionRDU)       EXP=unlearn/tofu/dlm_repel_gendistill ;;
         DiffusionADU)       EXP=unlearn/tofu/dlm_adu ;;
         DiffusionBST)       EXP=unlearn/tofu/dlm_bst ;;

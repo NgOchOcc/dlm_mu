@@ -81,30 +81,9 @@ def _component_amean(data, components):
 
 
 GROUPS = [
-<<<<<<< HEAD
     ("Final Scores", [
         ("erase_quality", "EQ"),
         ("model_utility", "MU"),
-=======
-    ("Erasing Quality", [
-        ("forget_Q_A_Prob", "f_P"),
-        ("forget_Q_A_ROUGE", "f_R"),
-        ("forget_truth_ratio", "f_TR"),
-        ("erasing_quality", "EQ"),
-        ("forget_Q_A_gibberish", "f_Flu"),
-    ]),
-    ("Retention Quality", [
-        ("retain_Q_A_ROUGE", "ret_R"),
-        ("ra_Q_A_ROUGE", "ra_R"),
-        ("wf_Q_A_ROUGE", "wf_R"),
-        ("model_utility", "RQ"),
-    ]),
-    ("Linguistic Quality", [
-        ("forget_Q_A_Fluency", "L_Flu"),
-        ("forget_Q_A_Relevance", "L_Rel"),
-        ("forget_Q_A_Hallucination", "L_Hal"),
-        ("forget_Q_A_Correctness", "L_Cor"),
->>>>>>> 0857b2bd3d2f6c471e8b374890a2a89321d9b766
         ("linguistic_quality", "LQ"),
         ("final_average", "AVG"),
     ]),
@@ -196,38 +175,22 @@ def _split_forget_only(core):
 
 
 def _is_inherent_forget_only(base_method):
-    """Retain-free-by-design methods, plus their hyper-param sweep arms.
-
-    A sweep tags the arm onto the method name (e.g. TSD_pathwise_minimal,
-    SimpleTSD_alpha0.5), so match both the bare method and any ``<method>_...``
-    variant. Keeps every TSD / SimpleTSD setting in the forget_only tables.
-    """
+    """Retain-free-by-design methods, plus their hyper-parameter sweep arms."""
     return base_method in INHERENT_FORGET_ONLY or any(
         base_method.startswith(f"{m}_") for m in INHERENT_FORGET_ONLY
     )
 
 
-# `simple` mode: only the headline TSD run and the standard baselines. Every TSD /
-# SimpleTSD sweep variant (base_method carrying a "<method>_..." arm tag, e.g.
-# TSD_pathwise_minimal, SimpleTSD, SimpleTSD_alpha0.5) is dropped; bare "TSD" stays.
-SIMPLE_METHODS = set(METHOD_ORDER) | {"TSD"}
+SIMPLE_METHODS = set(METHOD_ORDER)
 
 
 def _is_simple_method(base_method):
-    """True for a clean baseline or the bare TSD run; False for any sweep variant."""
+    """True for a clean baseline method."""
     return base_method in SIMPLE_METHODS
 
-<<<<<<< HEAD
 # Optional epoch tags used by training/evaluation scripts. They are stripped
 # before method categorisation but retained in the displayed row label.
 _EPOCHS_RE = re.compile(r"_(?:(\d+)epochs|ep(\d+))$")
-=======
-# Optional trailing "_<N>epochs" task-name tag (written by unlearn.sh with
-# EPOCH_IN_NAME=1) recording how long a run trained, so epoch sweeps of one method
-# land in distinct dirs. Stripped before a method is categorised / ranked, but
-# kept in the printed row label.
-_EPOCHS_RE = re.compile(r"_(\d+)epochs$")
->>>>>>> 0857b2bd3d2f6c471e8b374890a2a89321d9b766
 
 def _strip_epochs(label):
     return _EPOCHS_RE.sub("", label)
@@ -255,7 +218,28 @@ def _method_matches(method, selected_method):
 FORGET_SPLITS = ["forget01", "forget05", "forget10"]
 RETAIN_FOR = {"forget01": "retain99", "forget05": "retain95", "forget10": "retain90"}
 EXCLUDE_METHODS = {"NullAnchor", "AMTU", "TMOPU", "FCP", "CFTMOPU", "OCPE"}
+EXCLUDE_METHOD_PREFIXES = (
+    "SimpleTSD",
+    "SimpleTSDQMask",
+    "TSD",
+    "UniformTSDM",
+    "UniformTSD",
+    "UTSD",
+    "SBRUTSD",
+    "SBRU",
+    "Rollout",
+    "ConceptSubspace",
+    "ConcepSubspace",
+    "CSD",
+)
 EXCLUDE_SUFFIXES = ("_oldbase",)
+
+
+def _is_excluded_method(base_method):
+    return base_method in EXCLUDE_METHODS or any(
+        base_method.casefold().startswith(prefix.casefold())
+        for prefix in EXCLUDE_METHOD_PREFIXES
+    )
 
 def _is_diagnostic(name):
     return name.endswith(EXCLUDE_SUFFIXES) or any(
@@ -420,12 +404,11 @@ def collect_rows(model, forget_split, mode="both", selected_method=None):
             continue
         core = _strip_epochs(method)
         is_forget_only, base_method = _split_forget_only(core)
-        if base_method in EXCLUDE_METHODS or _is_diagnostic(method):
+        if _is_excluded_method(base_method) or _is_diagnostic(method):
             continue
         if mode == "forget_only" and not (is_forget_only or _is_inherent_forget_only(base_method)):
             continue
-        # `simple`: only clean baselines + bare TSD, and for the baselines only their
-        # forget-only arm (TSD is inherently forget-only, so it always qualifies).
+        # `simple`: only clean baselines, using their forget-only arms.
         if mode == "simple" and not (
             _is_simple_method(base_method)
             and (is_forget_only or _is_inherent_forget_only(base_method))
@@ -481,11 +464,10 @@ def collect_rows_muse(model, split, mode="both"):
         method = md.name.split("Diffusion")[-1]
         if method.endswith(MUSE_FORGET_ONLY_SUFFIX):
             method = method[: -len(MUSE_FORGET_ONLY_SUFFIX)]
-<<<<<<< HEAD
         method = DISPLAY_METHOD.get(method, method)
-=======
->>>>>>> 0857b2bd3d2f6c471e8b374890a2a89321d9b766
         _, base_method = _split_forget_only(_strip_epochs(method))
+        if _is_excluded_method(base_method):
+            continue
         if mode == "simple" and not _is_simple_method(base_method):
             continue
         data = load_summary_muse(md)
@@ -631,11 +613,9 @@ def main():
         choices=["both", "forget_only", "simple"],
         default="both",
         help="'both' shows every method variant; 'forget_only' shows the "
-        "_forgetonly runs plus retain-free-by-design methods like TSD (all other "
-<<<<<<< HEAD
+        "_forgetonly runs plus retain-free-by-design methods (all other "
         "no-suffix runs dropped, GA included); 'simple' shows only the "
-        "headline TSD run and the standard baselines, dropping all TSD/SimpleTSD "
-        "sweep variants. Reference rows always show.",
+        "standard baselines. Reference rows always show.",
     )
     ap.add_argument(
         "--synthetic-rdu-fluency",
@@ -661,11 +641,6 @@ def main():
         default=None,
         help="Only show methods matching this case-insensitive name prefix, plus "
         "their base and retain reference rows.",
-=======
-        "no-suffix runs dropped, GradAscent included); 'simple' shows only the "
-        "headline TSD run and the standard baselines, dropping all TSD/SimpleTSD "
-        "sweep variants. Reference rows always show.",
->>>>>>> 0857b2bd3d2f6c471e8b374890a2a89321d9b766
     )
     args = ap.parse_args()
     EVAL_DIR = args.eval_dir
@@ -692,7 +667,6 @@ def main():
             present.append(model)
             model_rows[model] = block
         if model_rows:
-<<<<<<< HEAD
             if args.detail:
                 for model in present:
                     print_table(
@@ -706,11 +680,6 @@ def main():
                     RETAIN_FOR[forget_split],
                     groups, cols, JUDGE_METRICS, LOWER_BETTER,
                 )
-=======
-            print_table(
-                forget_split, model_rows, present, RETAIN_FOR[forget_split],
-                GROUPS, COLS, JUDGE_METRICS, LOWER_BETTER,
-            )
 
     muse_models = discover_models_muse()
     for split in MUSE_SPLITS:
@@ -728,7 +697,6 @@ def main():
                 model_rows, present, None,
                 GROUPS_MUSE, COLS_MUSE, JUDGE_METRICS_MUSE, LOWER_BETTER_MUSE,
             )
->>>>>>> 0857b2bd3d2f6c471e8b374890a2a89321d9b766
     print()
 
 if __name__ == "__main__":

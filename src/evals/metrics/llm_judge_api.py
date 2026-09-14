@@ -371,7 +371,6 @@ _TOFU_INTRINSIC_FORGET_ONLY_METHODS = (
     "DiffusionBST",
     "DiffusionRDU",
     "DiffusionRepelGenDistill",
-    "DiffusionTSD",
 )
 
 
