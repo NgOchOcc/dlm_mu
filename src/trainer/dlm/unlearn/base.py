@@ -91,6 +91,72 @@ class DiffusionUnlearnTrainer(DiffusionFinetuneTrainer, UnlearnTrainer):
         """
         return F.log_softmax(logits[..., : self.vocab_size].float(), dim=-1)
 
+    def _forbidden_unlearning_token_ids(self):
+        """Tokenizer/control ids that must not participate in a forget objective.
+
+        ``all_special_ids`` is not sufficient for the supported chat templates:
+        Dream's ``im_end`` and LLaDA's ``eot_id`` may be ordinary added tokens.
+        Include the derived assistant-turn terminator as well as the conventional
+        BOS/EOS/PAD/MASK ids, and keep only ids on the tokenizer-vocabulary axis.
+        """
+        cached = getattr(self, "_forbidden_unlearning_token_ids_cache", None)
+        if cached is not None:
+            return cached
+
+        tokenizer = self.processing_class
+        token_ids = set(getattr(tokenizer, "all_special_ids", None) or [])
+        for name in ("bos_token_id", "eos_token_id", "pad_token_id", "mask_token_id"):
+            token_id = getattr(tokenizer, name, None)
+            if token_id is not None:
+                token_ids.add(int(token_id))
+
+        terminators = self._get_terminator_tensor(torch.device("cpu"))
+        if terminators is not None:
+            token_ids.update(int(token_id) for token_id in terminators.tolist())
+
+        cached = tuple(
+            sorted(int(i) for i in token_ids if 0 <= int(i) < self.vocab_size)
+        )
+        self._forbidden_unlearning_token_ids_cache = cached
+        return cached
+
+    def _forbidden_unlearning_vocab_mask(self, device):
+        """Boolean vocabulary mask for special/control tokens on ``device``."""
+        cached = getattr(self, "_forbidden_unlearning_vocab_mask_cache", None)
+        if cached is None:
+            cached = torch.zeros(self.vocab_size, dtype=torch.bool)
+            token_ids = self._forbidden_unlearning_token_ids()
+            if token_ids:
+                cached[list(token_ids)] = True
+            if bool(cached.all()):
+                raise ValueError(
+                    "unlearning requires at least one non-special tokenizer token"
+                )
+            self._forbidden_unlearning_vocab_mask_cache = cached
+        return cached.to(device)
+
+    def _condition_on_unlearning_vocabulary(self, log_scores):
+        """Set forbidden-token mass to zero and renormalize over lexical tokens.
+
+        The input may be logits or already-normalized log probabilities. Returning
+        log probabilities with ``-inf`` on the forbidden set makes special tokens
+        absent from both the target and policy sides of a forget objective.
+        """
+        if log_scores.shape[-1] != self.vocab_size:
+            raise ValueError(
+                f"expected vocabulary axis {self.vocab_size}, got {log_scores.shape[-1]}"
+            )
+        forbidden = self._forbidden_unlearning_vocab_mask(log_scores.device)
+        conditioned = log_scores.float().masked_fill(forbidden, float("-inf"))
+        return conditioned - torch.logsumexp(conditioned, dim=-1, keepdim=True)
+
+    def _unlearning_position_mask(self, input_ids):
+        """Positions whose clean target is lexical rather than special/control."""
+        if bool(((input_ids < 0) | (input_ids >= self.vocab_size)).any()):
+            raise ValueError("input_ids contains an id outside the tokenizer vocabulary")
+        forbidden = self._forbidden_unlearning_vocab_mask(input_ids.device)
+        return ~forbidden[input_ids]
+
     def _reduce(self, per_token, mask, loss_weights):
         """Mean over examples of the weighted per-position loss on ``mask``."""
         weighted = per_token * loss_weights.float() * mask.to(per_token.dtype)

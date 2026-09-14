@@ -1,0 +1,46 @@
+# @package _global_
+# Forget-only Semantic_Unlearn for masked-diffusion LMs on TOFU.
+# The frozen teacher target is tilted with the configured RBF or shifted-cosine
+# score around each masked gold token. There is no retain dataset, retain loss,
+# or ordinary denoising cross-entropy term.
+defaults:
+  - override /model: LLaDA-8B-Instruct
+  - override /trainer: DiffusionSemanticUnlearn
+  - override /data: unlearn
+  - override /data/datasets@data.forget: TOFU_QA_forget
+  - override /data/datasets@data.retain: null
+  - override /eval: tofu_dlm
+
+forget_split: forget10
+retain_split: retain90
+holdout_split: holdout10
+question_key: "question"
+
+# Dream needs right-shifted logits. The launcher supplies this automatically;
+# for a direct Hydra run, select Dream and set both right_shift_logits fields.
+# The loss_weight_type may remain configured for model compatibility, but
+# Semantic_Unlearn deliberately uses an unweighted mean of its per-token KL.
+
+eval:
+  tofu_dlm:
+    forget_split: ${forget_split}
+    holdout_split: ${holdout_split}
+    overwrite: true
+    question_key: ${question_key}
+
+data:
+  anchor: forget
+  forget:
+    TOFU_QA_forget:
+      args:
+        hf_args:
+          name: ${forget_split}
+
+trainer:
+  args:
+    warmup_epochs: 1.0
+    learning_rate: 1e-5
+    weight_decay: 0.01
+    num_train_epochs: 9
+
+task_name: ???

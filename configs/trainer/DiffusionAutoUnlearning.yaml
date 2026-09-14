@@ -1,0 +1,8 @@
+defaults:
+  - DiffusionFinetune
+
+handler: DiffusionAutoUnlearning
+method_args:
+  # Direct prompt-specific suppression strength. Must be finite and >= 0;
+  # beta=0 preserves the conditional teacher.
+  beta: 1.0
