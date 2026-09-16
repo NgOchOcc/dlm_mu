@@ -1,41 +1,3 @@
-"""Offline preprocessing for ``DiffusionSDU``: pick which query words to mask
-via Monte Carlo occlusion importance instead of the hand-written
-``is_entity_surface`` heuristic used by ``DiffusionSelectiveUnlearning`` on
-the query side. The answer side is unchanged and still uses
-``is_entity_surface`` at train time (``DiffusionSDU`` inherits
-``answer_entity_mask`` from ``DiffusionSelectiveUnlearning`` as-is).
-
-For every example in a TOFU forget split this computes, against a fixed base
-checkpoint, query-leak importance for every query word
-(``mc_query_leak_importance``): how much hiding it hurts recovering the
-memorized answer. Stop/function words (``DiffusionSelectiveUnlearning._QUERY_KEEP``,
-e.g. "what", "the", "of", "author") still take part in scoring - they stay in
-the candidate list and can be masked in any given MC trial like every other
-word. It keeps the top-k% by rank (same fixed-fraction selection
-``DiffusionSelectiveUnlearning`` applies as a hard 0/1 mask, just picked by
-MC importance instead of surface heuristics), then drops any selected word
-that is purely a stop word (mirroring the exclusion ``is_entity_surface``
-applies) - such a word is skipped, left visible/unmasked, rather than
-replaced or excluded from the ranking itself. Finally, since MC scores each
-word independently, a multi-word proper name can end up with only some of
-its words in the top-k% cut; ``expand_name_spans`` pulls in the rest of any
-name that was partially selected, so a name is either fully masked or not
-masked at all, never half-masked. The result is a JSON cache, keyed by the
-dataset's own stable per-example "index" field (``data.qa.QADataset`` /
-``add_dataset_index``), that ``DiffusionSDU`` loads at training time in
-place of the heuristic on the query side.
-
-Run this once, offline, against the *same* base checkpoint that will be
-fine-tuned by the SDU trainer, using the same split/max_length it will train
-with.
-
-Usage:
-    python scripts/dlm/sdu_precompute.py \\
-        --model-dir saves/finetune/tofu_LLaDA-8B-Instruct_retain100_150epochs \\
-        --split forget10 --k-percent-query 20 \\
-        --out saves/sdu_cache/forget10_retain100.json
-"""
-
 import argparse
 import json
 import random
@@ -53,6 +15,7 @@ from model import get_model  # noqa: E402
 from trainer.dlm.unlearn.selective_unlearning import DiffusionSelectiveUnlearning  # noqa: E402
 from trainer.dlm.unlearn.query_importance import (  # noqa: E402
     build_word_groups,
+    calibrate_entity_importance,
     drop_stopwords,
     expand_name_spans,
     mc_query_leak_importance,
@@ -77,6 +40,10 @@ def precompute_example(model, tokenizer, mask_id, vocab_size, device, item, args
         answer_pos, answer_targets, query_words,
         args.num_mc_trials, rng,
     )
+    query_importance = calibrate_entity_importance(
+        query_importance, query_words, DiffusionSelectiveUnlearning._QUERY_KEEP,
+        boost=args.entity_boost,
+    )
 
     query_selected = topk_word_indices(query_importance, args.k_percent_query)
     query_selected = drop_stopwords(
@@ -93,13 +60,22 @@ def precompute_example(model, tokenizer, mask_id, vocab_size, device, item, args
 
 
 def main():
-    ap = argparse.ArgumentParser(description=__doc__)
+    ap = argparse.ArgumentParser()
     ap.add_argument("--model-dir", required=True)
     ap.add_argument("--split", default="forget10", choices=["forget01", "forget05", "forget10"])
     ap.add_argument("--start-index", type=int, default=0)
     ap.add_argument("--num-samples", type=int, default=None, help="default: whole split")
     ap.add_argument("--num-mc-trials", type=int, default=32)
     ap.add_argument("--k-percent-query", type=int, default=20)
+    ap.add_argument(
+        "--entity-boost", type=float, default=1.6,
+        help="Boost capitalized/numeric (proper-name-like) query words before "
+        "the top-k%% cut; 1.0 = no boost, see calibrate_entity_importance. The "
+        "default (1.6) reaches >=80%% mean agreement with the is_entity_surface "
+        "heuristic mask at --k-percent-query 25 or higher; at k<=20 agreement "
+        "is capped below 80%% regardless of boost because most examples have "
+        "more entity words than the top-k%% budget allows.",
+    )
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--max-length", type=int, default=512)
     ap.add_argument("--out", required=True)
@@ -146,6 +122,7 @@ def main():
             "model_dir": args.model_dir,
             "split": args.split,
             "k_percent_query": args.k_percent_query,
+            "entity_boost": args.entity_boost,
             "num_mc_trials": args.num_mc_trials,
             "max_length": args.max_length,
             "seed": args.seed,

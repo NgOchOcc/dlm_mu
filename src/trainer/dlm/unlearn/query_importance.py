@@ -7,6 +7,7 @@ from trainer.dlm.unlearn.selective_unlearning import (
     content_fragments,
     content_group_indices,
     group_word_indices,
+    is_entity_surface,
 )
 
 _ROLE_NAMES = {"user", "assistant", "system"}
@@ -90,6 +91,18 @@ def expand_name_spans(selected, words, keep_words):
         if any(i in selected for i in span):
             expanded.update(span)
     return expanded
+
+
+def calibrate_entity_importance(importance, words, keep_words, boost=1.6):
+    if boost == 1.0 or not importance:
+        return list(importance)
+
+    spread = max(importance) - min(importance)
+    bonus = (boost - 1.0) * spread
+    return [
+        score + bonus if is_entity_surface(words[i]["text"], keep_words) else score
+        for i, score in enumerate(importance)
+    ]
 
 
 def topk_word_indices(importance, k_percent):
