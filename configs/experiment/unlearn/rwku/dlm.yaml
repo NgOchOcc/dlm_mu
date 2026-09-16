@@ -31,6 +31,7 @@ eval:
 
 trainer:
   args:
+    per_device_train_batch_size: 1
     warmup_epochs: 1.0
     learning_rate: 1e-5
     weight_decay: 0.01
