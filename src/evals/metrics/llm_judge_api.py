@@ -367,10 +367,7 @@ _TOFU_RETAIN_SPLITS = {
     "forget01": "retain99",
 }
 _TOFU_INTRINSIC_FORGET_ONLY_METHODS = (
-    "DiffusionADU",
     "DiffusionBST",
-    "DiffusionRDU",
-    "DiffusionRepelGenDistill",
 )
 
 

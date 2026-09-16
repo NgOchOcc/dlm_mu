@@ -154,7 +154,7 @@ method_args:
 The trainer configs cover both:
 
 - **autoregressive methods**, such as gradient ascent, gradient difference, NPO, RMU, WGA, and others; and
-- **DLLM methods**, such as DiffusionGD, MDU, GAP, AURA, TSD, SimpleTSD, Semantic_Unlearn, UTSD, CSD, SBRU, and SBRU-TSD.
+- **DLLM methods**, such as DiffusionGD, MDU, GAP, AURA, TSD, SimpleTSD, UTSD, CSD, SBRU, and SBRU-TSD.
 
 ### 4.4 Data configurations
 
@@ -357,8 +357,8 @@ Shared fine-tuning infrastructure is in [`src/trainer/base.py`](../src/trainer/b
 
 | File | Main method or role |
 |---|---|
-| [`grad_ascent.py`](../src/trainer/dlm/unlearn/grad_ascent.py) | DLLM gradient-ascent baseline. |
-| [`grad_diff.py`](../src/trainer/dlm/unlearn/grad_diff.py) | Forget ascent plus retain NLL. |
+| [`ga.py`](../src/trainer/dlm/unlearn/ga.py) | DLLM gradient-ascent baseline. |
+| [`gd.py`](../src/trainer/dlm/unlearn/gd.py) | Forget ascent plus retain NLL. |
 | [`npo.py`](../src/trainer/dlm/unlearn/npo.py) | DLLM NPO. |
 | [`simnpo.py`](../src/trainer/dlm/unlearn/simnpo.py) | DLLM SimNPO. |
 | [`wga.py`](../src/trainer/dlm/unlearn/wga.py) | DLLM WGA. |
@@ -367,8 +367,6 @@ Shared fine-tuning infrastructure is in [`src/trainer/base.py`](../src/trainer/b
 | [`aura.py`](../src/trainer/dlm/unlearn/aura.py) | AURA method. |
 | [`tsd.py`](../src/trainer/dlm/unlearn/tsd.py) | Trajectory-selective distillation. |
 | [`simple_tsd.py`](../src/trainer/dlm/unlearn/simple_tsd.py) | Retain-free SimpleTSD. |
-| [`semantic_unlearn.py`](../src/trainer/dlm/unlearn/semantic_unlearn.py) | Forget-only semantic-target unlearning with RBF and shifted-cosine targets. |
-| [`auto_unlearning.py`](../src/trainer/dlm/unlearn/auto_unlearning.py) | Conditional-baseline selective anti-conditional unlearning. |
 | [`simple_tsd_qmask.py`](../src/trainer/dlm/unlearn/simple_tsd_qmask.py) | Promptless-target SimpleTSD variant. |
 | [`uniform_tsd.py`](../src/trainer/dlm/unlearn/uniform_tsd.py) | Uniform TSD variant. |
 | [`concept_subspace.py`](../src/trainer/dlm/unlearn/concept_subspace.py) | Concept-subspace distillation/unlearning. |
@@ -376,7 +374,7 @@ Shared fine-tuning infrastructure is in [`src/trainer/base.py`](../src/trainer/b
 | [`sbru_tsd.py`](../src/trainer/dlm/unlearn/sbru_tsd.py) | SBRU composed with the SimpleTSD pipeline. |
 | [`rollout.py`](../src/trainer/dlm/unlearn/rollout.py) | Shared reverse-trajectory and completion utilities. |
 
-For details about SimpleTSD, see [`docs/simple_tsd_algorithms.md`](simple_tsd_algorithms.md). For Semantic_Unlearn, begin with the target-distribution table and theory in [`docs/semantic_unlearn.md`](semantic_unlearn.md), then continue to its separate implementation section.
+For details about SimpleTSD, see [`docs/simple_tsd_algorithms.md`](simple_tsd_algorithms.md).
 
 ### 5.7 Evaluation layer
 
@@ -484,8 +482,6 @@ Important SimpleTSD-related files include:
 | [`simple_tsd.sh`](../scripts/dlm/tofu/simple_tsd.sh) | Primary SimpleTSD launcher. |
 | [`simpletsd_qmask.sh`](../scripts/dlm/tofu/simpletsd_qmask.sh) | Promptless-target variant launcher. |
 | [`simple_tsd_smoke_test.py`](../scripts/dlm/tofu/simple_tsd_smoke_test.py) | Fast method-level sanity checks. |
-| [`run_semantic_unlearn.sh`](../scripts/dlm/tofu/run_semantic_unlearn.sh) | Semantic_Unlearn launcher. |
-| [`run_auto_unlearning.sh`](../scripts/dlm/tofu/run_auto_unlearning.sh) | Conditional-baseline Auto Unlearning launcher. |
 | [`simple_tsd_probe_forget.py`](../scripts/dlm/tofu/simple_tsd_probe_forget.py) | Inspect selected forget positions. |
 | [`simple_tsd_probe_to_html.py`](../scripts/dlm/tofu/simple_tsd_probe_to_html.py) | Render probe output for inspection. |
 | [`simple_tsd_viz_target.py`](../scripts/dlm/tofu/simple_tsd_viz_target.py) | Visualize edited target behavior. |
@@ -615,22 +611,6 @@ The implementation should inherit from the narrowest suitable existing trainer, 
 3. [`configs/trainer/DiffusionSimpleTSD.yaml`](../configs/trainer/DiffusionSimpleTSD.yaml)
 4. [`configs/experiment/unlearn/tofu/dlm_simple_tsd.yaml`](../configs/experiment/unlearn/tofu/dlm_simple_tsd.yaml)
 5. [`scripts/dlm/tofu/simple_tsd.sh`](../scripts/dlm/tofu/simple_tsd.sh)
-
-### To understand Semantic_Unlearn
-
-1. [`docs/semantic_unlearn.md`](semantic_unlearn.md)
-2. [`src/trainer/dlm/unlearn/semantic_unlearn.py`](../src/trainer/dlm/unlearn/semantic_unlearn.py)
-3. [`configs/trainer/DiffusionSemanticUnlearn.yaml`](../configs/trainer/DiffusionSemanticUnlearn.yaml)
-4. [`configs/experiment/unlearn/tofu/dlm_semantic_unlearn.yaml`](../configs/experiment/unlearn/tofu/dlm_semantic_unlearn.yaml)
-5. [`scripts/dlm/tofu/run_semantic_unlearn.sh`](../scripts/dlm/tofu/run_semantic_unlearn.sh)
-
-### To understand Auto Unlearning
-
-1. [`docs/auto_unlearning.md`](auto_unlearning.md)
-2. [`src/trainer/dlm/unlearn/auto_unlearning.py`](../src/trainer/dlm/unlearn/auto_unlearning.py)
-3. [`configs/trainer/DiffusionAutoUnlearning.yaml`](../configs/trainer/DiffusionAutoUnlearning.yaml)
-4. [`configs/experiment/unlearn/tofu/dlm_auto_unlearning.yaml`](../configs/experiment/unlearn/tofu/dlm_auto_unlearning.yaml)
-5. [`scripts/dlm/tofu/run_auto_unlearning.sh`](../scripts/dlm/tofu/run_auto_unlearning.sh)
 
 ### To understand SBRU and SBRU-TSD
 

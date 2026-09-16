@@ -1,7 +1,7 @@
 import math
 import torch
 
-from trainer.dlm.unlearn.grad_diff import DiffusionGD
+from trainer.dlm.unlearn.gd import DiffusionGD
 
 
 class DiffusionMDU(DiffusionGD):

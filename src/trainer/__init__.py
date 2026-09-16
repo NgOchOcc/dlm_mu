@@ -26,8 +26,6 @@ from trainer.dlm.unlearn import (
     DiffusionSimNPO,
     DiffusionWGA,
     DiffusionMDU,
-    DiffusionRDU,
-    DiffusionADU,
     DiffusionBST,
     DiffusionSelectiveUnlearning,
     DiffusionSDU,
@@ -131,8 +129,6 @@ _register_trainer(DiffusionNPO)
 _register_trainer(DiffusionSimNPO)
 _register_trainer(DiffusionWGA)
 _register_trainer(DiffusionMDU)
-_register_trainer(DiffusionRDU)
-_register_trainer(DiffusionADU)
 _register_trainer(DiffusionBST)
 _register_trainer(DiffusionSelectiveUnlearning)
 _register_trainer(DiffusionSDU)

@@ -128,10 +128,8 @@ DEFAULT_METHODS=(
     DiffusionSimNPO
     DiffusionWGA
     DiffusionBST
-    DiffusionADU
     DiffusionGD
     DiffusionMDU
-    DiffusionRDU
     DiffusionSDU
     DiffusionSelectiveUnlearning
 )
@@ -159,8 +157,6 @@ method_setup() {
             EXP=unlearn/tofu/dlm
             ;;
         DiffusionMDU)       EXP=unlearn/tofu/dlm_mdu ;;
-        DiffusionRDU)       EXP=unlearn/tofu/dlm_repel_gendistill ;;
-        DiffusionADU)       EXP=unlearn/tofu/dlm_adu ;;
         DiffusionBST)       EXP=unlearn/tofu/dlm_bst ;;
         DiffusionSDU)       EXP=unlearn/tofu/dlm_sdu ;;
         DiffusionSelectiveUnlearning) EXP=unlearn/tofu/dlm_selective_unlearning ;;

@@ -27,7 +27,7 @@ from trainer.dlm.unlearn.base import DiffusionUnlearnTrainer
 _SPECIAL_RE = re.compile(r"<\|?[^<>]*\|?>")
 
 
-def _group_word_indices(surfaces):
+def group_word_indices(surfaces):
     """Group subword-token positions into whitespace-delimited words."""
     groups, current = [], []
     for index, surface in enumerate(surfaces):
@@ -41,7 +41,7 @@ def _group_word_indices(surfaces):
     return groups
 
 
-def _content_fragments(surface, min_length=2):
+def content_fragments(surface, min_length=2):
     surface = _SPECIAL_RE.sub(" ", surface).lower()
     return [
         fragment
@@ -50,10 +50,10 @@ def _content_fragments(surface, min_length=2):
     ]
 
 
-def _is_entity_surface(surface, keep_words):
+def is_entity_surface(surface, keep_words):
     """Whether a decoded word surface looks like a proper name or identifier."""
     surface = _SPECIAL_RE.sub(" ", surface).strip()
-    fragments = _content_fragments(surface)
+    fragments = content_fragments(surface)
     if not fragments:
         return False
     if re.search(r"\d", surface):
@@ -66,7 +66,7 @@ def _is_entity_surface(surface, keep_words):
     )
 
 
-def _content_group_indices(surfaces, group):
+def content_group_indices(surfaces, group):
     """Exclude standalone punctuation/control pieces from a matched word group."""
     return [
         index
@@ -218,14 +218,14 @@ class DiffusionSelectiveUnlearning(DiffusionUnlearnTrainer):
         for parameter in self.ref_model.parameters():
             parameter.requires_grad_(False)
 
-    def _prompt_mask(self, input_ids, answer_mask, attention_mask):
+    def prompt_mask(self, input_ids, answer_mask, attention_mask):
         """Return attended, non-answer, non-padding query positions."""
         prompt = (~answer_mask) & (input_ids != self.pad_id)
         if attention_mask is not None:
             prompt = prompt & attention_mask.bool()
         return prompt
 
-    def _answer_copy_mask(self, input_ids, answer_mask, query_entity_mask):
+    def answer_copy_mask(self, input_ids, answer_mask, query_entity_mask):
         """Answer words that copy an entity explicitly supplied in the query."""
         tokenizer = self.processing_class
         copied = torch.zeros_like(answer_mask)
@@ -251,20 +251,20 @@ class DiffusionSelectiveUnlearning(DiffusionUnlearnTrainer):
                 tokenizer.decode([int(token_id)])
                 for token_id in input_ids[batch_index][answer_indices]
             ]
-            for group in _group_word_indices(surfaces):
-                fragments = _content_fragments(
+            for group in group_word_indices(surfaces):
+                fragments = content_fragments(
                     "".join(surfaces[index] for index in group)
                 )
                 if fragments and all(
                     fragment in query_words for fragment in fragments
                 ):
-                    for index in _content_group_indices(surfaces, group):
+                    for index in content_group_indices(surfaces, group):
                         copied[batch_index, answer_indices[index]] = True
         return copied & answer_mask
 
-    def _query_entity_mask(self, input_ids, answer_mask, attention_mask):
+    def query_entity_mask(self, input_ids, answer_mask, attention_mask):
         """Query proper-name and numeric-identifier positions."""
-        prompt_mask = self._prompt_mask(input_ids, answer_mask, attention_mask)
+        prompt_mask = self.prompt_mask(input_ids, answer_mask, attention_mask)
         entity_mask = torch.zeros_like(answer_mask)
         tokenizer = self.processing_class
         for batch_index in range(input_ids.shape[0]):
@@ -275,14 +275,14 @@ class DiffusionSelectiveUnlearning(DiffusionUnlearnTrainer):
                 tokenizer.decode([int(token_id)])
                 for token_id in input_ids[batch_index][query_indices]
             ]
-            for group in _group_word_indices(surfaces):
+            for group in group_word_indices(surfaces):
                 word = "".join(surfaces[index] for index in group).strip()
-                if _is_entity_surface(word, self._QUERY_KEEP):
-                    for index in _content_group_indices(surfaces, group):
+                if is_entity_surface(word, self._QUERY_KEEP):
+                    for index in content_group_indices(surfaces, group):
                         entity_mask[batch_index, query_indices[index]] = True
         return entity_mask & prompt_mask
 
-    def _answer_entity_mask(self, input_ids, answer_mask, answer_copy_mask):
+    def answer_entity_mask(self, input_ids, answer_mask, answer_copy_mask):
         """Answer entity/fact approximation: copied subjects plus answer entities."""
         entity_mask = answer_copy_mask.clone()
         tokenizer = self.processing_class
@@ -294,15 +294,15 @@ class DiffusionSelectiveUnlearning(DiffusionUnlearnTrainer):
                 tokenizer.decode([int(token_id)])
                 for token_id in input_ids[batch_index][answer_indices]
             ]
-            for group in _group_word_indices(surfaces):
+            for group in group_word_indices(surfaces):
                 word = "".join(surfaces[index] for index in group).strip()
-                if _is_entity_surface(word, self._ANSWER_KEEP):
-                    for index in _content_group_indices(surfaces, group):
+                if is_entity_surface(word, self._ANSWER_KEEP):
+                    for index in content_group_indices(surfaces, group):
                         entity_mask[batch_index, answer_indices[index]] = True
         return entity_mask & answer_mask
 
     @torch.no_grad()
-    def _teacher_log_probs(self, input_ids, attention_mask, positions):
+    def teacher_log_probs(self, input_ids, attention_mask, positions):
         outputs = self.ref_model(
             input_ids=input_ids, attention_mask=attention_mask
         )
@@ -310,7 +310,7 @@ class DiffusionSelectiveUnlearning(DiffusionUnlearnTrainer):
         return self._log_probs(logits)
 
     @torch.no_grad()
-    def _selective_target(self, log_p_cond, log_p_cf):
+    def selective_target(self, log_p_cond, log_p_cf):
         """Build the normalized entity-counterfactual target distribution."""
         entity_score = (log_p_cond.float() - log_p_cf.float()).clamp_min(0.0)
         target_logits = log_p_cf.float() - self.beta * entity_score
@@ -318,13 +318,13 @@ class DiffusionSelectiveUnlearning(DiffusionUnlearnTrainer):
         return log_q.detach(), log_q.exp().detach()
 
     @torch.no_grad()
-    def _position_targets(self, log_p_cond, log_p_cf, forget_positions):
+    def position_targets(self, log_p_cond, log_p_cf, forget_positions):
         """Route forget positions to q* and all other positions to p_cond."""
         if log_p_cond.shape != log_p_cf.shape:
             raise ValueError("conditional and counterfactual distributions must align")
         if forget_positions.shape != log_p_cond.shape[:-1]:
             raise ValueError("forget_positions must contain one flag per position")
-        log_q_selective, q_selective = self._selective_target(
+        log_q_selective, q_selective = self.selective_target(
             log_p_cond, log_p_cf
         )
         forget_positions = forget_positions.unsqueeze(-1)
@@ -332,7 +332,7 @@ class DiffusionSelectiveUnlearning(DiffusionUnlearnTrainer):
         q = torch.where(forget_positions, q_selective, log_p_cond.float().exp())
         return log_q.detach(), q.detach()
 
-    def _sample_selective_state(self, model, forget):
+    def sample_selective_state(self, model, forget):
         """Sample and evaluate the shared answer state from the method spec."""
         if self.processing_class.padding_side != "right":
             raise ValueError("selective unlearning requires right padding")
@@ -354,13 +354,13 @@ class DiffusionSelectiveUnlearning(DiffusionUnlearnTrainer):
 
         batch_size, sequence_length = input_ids.shape
         answer_mask = labels != -100
-        query_entity_mask = self._query_entity_mask(
+        query_entity_mask = self.query_entity_mask(
             input_ids, answer_mask, attention_mask
         )
-        answer_copy_mask = self._answer_copy_mask(
+        answer_copy_mask = self.answer_copy_mask(
             input_ids, answer_mask, query_entity_mask
         )
-        answer_entity_mask = self._answer_entity_mask(
+        answer_entity_mask = self.answer_entity_mask(
             input_ids, answer_mask, answer_copy_mask
         )
         answer_forget_mask = answer_entity_mask & ~answer_copy_mask
@@ -402,7 +402,7 @@ class DiffusionSelectiveUnlearning(DiffusionUnlearnTrainer):
     def compute_loss(
         self, model, inputs, return_outputs=False, num_items_in_batch=None
     ):
-        state = self._sample_selective_state(model, inputs["forget"])
+        state = self.sample_selective_state(model, inputs["forget"])
         masked = state["effective_mask"]
         noised = state["noised_input_ids"]
         attention_mask = state["attention_mask"]
@@ -411,14 +411,14 @@ class DiffusionSelectiveUnlearning(DiffusionUnlearnTrainer):
             state["query_entity_mask"], self.mask_id, noised
         )
         with torch.no_grad():
-            log_p_cond = self._teacher_log_probs(
+            log_p_cond = self.teacher_log_probs(
                 noised, attention_mask, masked
             )
-            log_p_cf = self._teacher_log_probs(
+            log_p_cf = self.teacher_log_probs(
                 counterfactual, attention_mask, masked
             )
             forget_positions = state["answer_forget_mask"][masked]
-            log_q, q = self._position_targets(
+            log_q, q = self.position_targets(
                 log_p_cond, log_p_cf, forget_positions
             )
 

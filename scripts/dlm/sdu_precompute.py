@@ -1,9 +1,9 @@
 """Offline preprocessing for ``DiffusionSDU``: pick which query words to mask
 via Monte Carlo occlusion importance instead of the hand-written
-``_is_entity_surface`` heuristic used by ``DiffusionSelectiveUnlearning`` on
+``is_entity_surface`` heuristic used by ``DiffusionSelectiveUnlearning`` on
 the query side. The answer side is unchanged and still uses
-``_is_entity_surface`` at train time (``DiffusionSDU`` inherits
-``_answer_entity_mask`` from ``DiffusionSelectiveUnlearning`` as-is).
+``is_entity_surface`` at train time (``DiffusionSDU`` inherits
+``answer_entity_mask`` from ``DiffusionSelectiveUnlearning`` as-is).
 
 For every example in a TOFU forget split this computes, against a fixed base
 checkpoint, query-leak importance for every query word
@@ -14,7 +14,7 @@ the candidate list and can be masked in any given MC trial like every other
 word. It keeps the top-k% by rank (same fixed-fraction selection
 ``DiffusionSelectiveUnlearning`` applies as a hard 0/1 mask, just picked by
 MC importance instead of surface heuristics), then drops any selected word
-that is purely a stop word (mirroring the exclusion ``_is_entity_surface``
+that is purely a stop word (mirroring the exclusion ``is_entity_surface``
 applies) - such a word is skipped, left visible/unmasked, rather than
 replaced or excluded from the ranking itself. Finally, since MC scores each
 word independently, a multi-word proper name can end up with only some of

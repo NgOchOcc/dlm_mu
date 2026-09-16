@@ -1,7 +1,7 @@
 import torch
 import torch.nn.functional as F
 
-from trainer.dlm.unlearn.grad_diff import DiffusionGD
+from trainer.dlm.unlearn.gd import DiffusionGD
 
 
 class DiffusionNPO(DiffusionGD):

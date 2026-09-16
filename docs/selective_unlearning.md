@@ -600,7 +600,7 @@ one-character fragments.
 
 ### 12.1 Query entity mask
 
-[`_query_entity_mask`](../src/trainer/dlm/unlearn/selective_unlearning.py)
+[`query_entity_mask`](../src/trainer/dlm/unlearn/selective_unlearning.py)
 constructs $\mathcal I_x(x)$ from capitalized words and numeric identifiers not
 present in the query allowlist. Sentence-initial entities are eligible; common
 question, function, and TOFU-domain words such as `What`, `author`, `book`, and
@@ -608,12 +608,12 @@ question, function, and TOFU-domain words such as `What`, `author`, `book`, and
 
 ### 12.2 Copied-subject and forget-fact masks
 
-[`_answer_copy_mask`](../src/trainer/dlm/unlearn/selective_unlearning.py)
+[`answer_copy_mask`](../src/trainer/dlm/unlearn/selective_unlearning.py)
 constructs $\mathcal I_y^{\mathrm{copy}}$ by matching answer words only against
 the detected query-entity words. It therefore protects `Hanoi` but not the
 ordinary repeated word `is` in the running example.
 
-[`_answer_entity_mask`](../src/trainer/dlm/unlearn/selective_unlearning.py)
+[`answer_entity_mask`](../src/trainer/dlm/unlearn/selective_unlearning.py)
 constructs an answer entity/fact candidate mask as the union of:
 
 1. copied query-entity words;

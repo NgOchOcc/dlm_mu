@@ -477,7 +477,7 @@ one-character fragments.
 
 ### 12.1 Query entity mask
 
-[`_query_entity_mask`](../src/trainer/dlm/unlearn/selective_unlearning.py)
+[`query_entity_mask`](../src/trainer/dlm/unlearn/selective_unlearning.py)
 constructs $\mathcal I_x(x)$ as the union of:
 
 1. query words whose normalized form also occurs in the answer;
@@ -493,7 +493,7 @@ entities solely because of capitalization.
 
 ### 12.2 Answer entity mask
 
-[`_answer_entity_mask`](../src/trainer/dlm/unlearn/selective_unlearning.py)
+[`answer_entity_mask`](../src/trainer/dlm/unlearn/selective_unlearning.py)
 constructs $\mathcal I_y(y)$ as the union of:
 
 1. answer words whose normalized form occurs in the query; and

@@ -2,7 +2,7 @@
 
 ``DiffusionSelectiveUnlearning`` currently picks which query tokens to hide
 from the counterfactual teacher with a hand-written heuristic
-(``_is_entity_surface``: capitalized words / digits, minus a stop-word list).
+(``is_entity_surface``: capitalized words / digits, minus a stop-word list).
 This script tests a data-driven alternative: repeatedly mask random subsets
 of query words, measure how much each subset hurts the model's log-probability
 of the true (memorized) answer, and use the per-word marginal contribution
@@ -48,10 +48,10 @@ from data.qa import QADataset  # noqa: E402
 from model import get_model  # noqa: E402
 from trainer.dlm.unlearn.selective_unlearning import (  # noqa: E402
     DiffusionSelectiveUnlearning,
-    _content_fragments,
-    _content_group_indices,
-    _group_word_indices,
-    _is_entity_surface,
+    content_fragments,
+    content_group_indices,
+    group_word_indices,
+    is_entity_surface,
 )
 from trainer.dlm.unlearn.query_importance import (  # noqa: E402
     build_word_groups,
@@ -118,12 +118,12 @@ def selective_answer_masks(tokenizer, input_ids, answer_mask, query_words, selec
         surfaces = [
             tokenizer.decode([int(token_id)]) for token_id in input_ids[answer_indices]
         ]
-        for group in _group_word_indices(surfaces):
-            fragments = _content_fragments(
+        for group in group_word_indices(surfaces):
+            fragments = content_fragments(
                 "".join(surfaces[index] for index in group)
             )
             if fragments and all(fragment in query_word_set for fragment in fragments):
-                for index in _content_group_indices(surfaces, group):
+                for index in content_group_indices(surfaces, group):
                     answer_copy_mask[answer_indices[index]] = True
 
     answer_entity_mask = answer_copy_mask.clone()
@@ -131,10 +131,10 @@ def selective_answer_masks(tokenizer, input_ids, answer_mask, query_words, selec
     surfaces = [
         tokenizer.decode([int(token_id)]) for token_id in input_ids[answer_indices]
     ]
-    for group in _group_word_indices(surfaces):
+    for group in group_word_indices(surfaces):
         word = "".join(surfaces[index] for index in group).strip()
-        if _is_entity_surface(word, DiffusionSelectiveUnlearning._ANSWER_KEEP):
-            for index in _content_group_indices(surfaces, group):
+        if is_entity_surface(word, DiffusionSelectiveUnlearning._ANSWER_KEEP):
+            for index in content_group_indices(surfaces, group):
                 answer_entity_mask[answer_indices[index]] = True
 
     answer_forget_mask = answer_entity_mask & ~answer_copy_mask
@@ -177,7 +177,7 @@ def probe_example(model, tokenizer, mask_id, vocab_size, device, item, num_trial
 
     heuristic_selected = {
         i for i, w in enumerate(words)
-        if _is_entity_surface(w["text"], DiffusionSelectiveUnlearning._QUERY_KEEP)
+        if is_entity_surface(w["text"], DiffusionSelectiveUnlearning._QUERY_KEEP)
     }
 
     # --- fixed top-k% selections, applied as a hard mask exactly like
@@ -322,7 +322,7 @@ def render_sample(idx, result):
         text_color = "#ffffff" if dark_text else PALETTE["ink"]
         badges = ""
         if i in result["heuristic_selected"]:
-            badges += '<span class="badge badge-h" title="Flagged by the existing heuristic (_is_entity_surface)">H</span>'
+            badges += '<span class="badge badge-h" title="Flagged by the existing heuristic (is_entity_surface)">H</span>'
         if i in result["entry_k"]:
             k = result["entry_k"][i]
             badges += (
@@ -509,7 +509,7 @@ def render_html(results, args):
     answer more, averaged over {args.num_mc_trials} random subsets per example; each
     trial draws its own subset size p&#126;Uniform(0,1) and masks a Bernoulli(p)
     subset of words). <b>H</b> = flagged by the existing
-    hand-written heuristic (<code>_is_entity_surface</code>); the numeric badge shows
+    hand-written heuristic (<code>is_entity_surface</code>); the numeric badge shows
     the smallest top-k% cut (ranked by importance) that pulls the word into the
     mask set. Each masking condition below is applied as a hard 0/1 mask exactly
     like <code>DiffusionSelectiveUnlearning</code> applies its entity mask, and
