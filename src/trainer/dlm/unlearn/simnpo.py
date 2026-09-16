@@ -1,9 +1,9 @@
 import torch.nn.functional as F
 
-from trainer.dlm.unlearn.grad_diff import DiffusionGradDiff
+from trainer.dlm.unlearn.grad_diff import DiffusionGD
 
 
-class DiffusionSimNPO(DiffusionGradDiff):
+class DiffusionSimNPO(DiffusionGD):
     """Reference-free SimNPO with the masked-diffusion objective.
 
     Like DiffusionNPO but without a reference model: the per-example diffusion

@@ -1,7 +1,7 @@
 defaults:
   - DiffusionFinetune
 
-handler: DiffusionGradDiff
+handler: DiffusionGD
 method_args:
   gamma: 1.0
   alpha: 1.0

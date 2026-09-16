@@ -21,7 +21,7 @@ from trainer.unlearn.pdu import PDU
 from trainer.dlm import DiffusionFinetuneTrainer
 from trainer.dlm.unlearn import (
     DiffusionGA,
-    DiffusionGradDiff,
+    DiffusionGD,
     DiffusionNPO,
     DiffusionSimNPO,
     DiffusionWGA,
@@ -126,7 +126,7 @@ _register_trainer(PDU)
 # Register DLM Trainers
 _register_trainer(DiffusionFinetuneTrainer)
 _register_trainer(DiffusionGA)
-_register_trainer(DiffusionGradDiff)
+_register_trainer(DiffusionGD)
 _register_trainer(DiffusionNPO)
 _register_trainer(DiffusionSimNPO)
 _register_trainer(DiffusionWGA)

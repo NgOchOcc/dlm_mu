@@ -1,6 +1,4 @@
 #!/usr/bin/env bash
-# Evaluate saved retain-reference checkpoints.
-# Usage: bash scripts/dlm/tofu/evaluate_retain.sh <dream|llada> [gpus] [splits]
 set -uo pipefail
 cd "$(dirname "$0")/../../.." || exit 1
 source scripts/dlm/lib.sh
@@ -21,7 +19,7 @@ for split in ${splits//,/ }; do
             done
             ;;
         retain90|retain95|retain99)
-            tofu_split "unlearn${split#retain}"   
+            tofu_split "unlearn${split#retain}"
             eval_plan_add "tofu_${MODEL}_${split}" "$(rundir_for "$split")" "$FORGET"
             ;;
         *)
@@ -30,11 +28,7 @@ for split in ${splits//,/ }; do
     esac
 done
 
-echo "[eval] model=${MODEL} refs=${splits}" \
-     "gpus=${EVAL_GPUS:-$GPUS} parallel=${PARALLEL:-0} n=${#PLAN_TASKS[@]}"
-
 fail=0
 eval_plan_run "$@" || fail=1
-echo "[eval] done (fail=${fail})"
 python scripts/dlm/show_results.py || true
 exit "$fail"

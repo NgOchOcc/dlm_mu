@@ -17,7 +17,7 @@ import torch
 import torch.distributed as dist
 import torch.nn.functional as F
 
-from trainer.dlm.unlearn.grad_diff import DiffusionGradDiff
+from trainer.dlm.unlearn.grad_diff import DiffusionGD
 
 _SPECIAL_RE = re.compile(r"<\|?[^<>]*\|?>")
 
@@ -42,7 +42,7 @@ def _content_frags(surface, min_len=2):
     return [f for f in re.findall(r"[a-z0-9]+", surface) if len(f) >= min_len]
 
 
-class DiffusionRDU(DiffusionGradDiff):
+class DiffusionRDU(DiffusionGD):
     _QUERY_KEEP = {
         "what", "who", "which", "how", "when", "where", "why", "whose", "can", "could",
         "would", "does", "did", "do", "is", "are", "was", "were", "has", "have", "had",

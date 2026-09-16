@@ -154,7 +154,7 @@ method_args:
 The trainer configs cover both:
 
 - **autoregressive methods**, such as gradient ascent, gradient difference, NPO, RMU, WGA, and others; and
-- **DLLM methods**, such as DiffusionGradDiff, MDU, GAP, AURA, TSD, SimpleTSD, Semantic_Unlearn, UTSD, CSD, SBRU, and SBRU-TSD.
+- **DLLM methods**, such as DiffusionGD, MDU, GAP, AURA, TSD, SimpleTSD, Semantic_Unlearn, UTSD, CSD, SBRU, and SBRU-TSD.
 
 ### 4.4 Data configurations
 

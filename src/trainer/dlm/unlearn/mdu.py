@@ -1,10 +1,10 @@
 import math
 import torch
 
-from trainer.dlm.unlearn.grad_diff import DiffusionGradDiff
+from trainer.dlm.unlearn.grad_diff import DiffusionGD
 
 
-class DiffusionMDU(DiffusionGradDiff):
+class DiffusionMDU(DiffusionGD):
     def __init__(self, tau=0.5, eta=0.0, kl_direction="forward", *args, **kwargs):
         super().__init__(*args, **kwargs)
         if kl_direction not in ("forward", "reverse", "js"):

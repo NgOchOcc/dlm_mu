@@ -1,6 +1,4 @@
 #!/usr/bin/env bash
-# Train a TOFU reference model and evaluate it.
-# Usage: bash scripts/dlm/tofu/retain.sh <dream|llada|llada1.5> [gpus] [retain split]
 set -euo pipefail
 cd "$(dirname "$0")/../../.." || exit 1
 source scripts/dlm/lib.sh
@@ -31,13 +29,9 @@ task="$(basename "$rundir")"
 ckpt="$(resolve_ckpt "$rundir")"
 if [[ "$ckpt" == "$rundir"/checkpoint-* ]]; then
     RESUME="${RESUME:-$ckpt}"
-    echo "[retain] found in-progress checkpoint ${ckpt}, resuming" >&2
 elif [[ -f "$rundir/config.json" ]] && ! flag_on "${OVERWRITE:-}"; then
     die "training already complete in ${rundir} (set OVERWRITE=1 to retrain from scratch)"
 fi
-
-echo "[retain] model=${MODEL} split=${split} task=${task}" \
-     "epochs=${EPOCHS:-$FINETUNE_EPOCHS} gpus=${GPUS} resume=${RESUME:-null}" >&2
 
 tofu_train "$task" "${EPOCHS:-$FINETUNE_EPOCHS}" \
     forget_split="${FORGET}" \

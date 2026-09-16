@@ -9,7 +9,6 @@ flag_on() {
     esac
 }
 
-
 detect_gpus() {
     if [[ -n "${CUDA_VISIBLE_DEVICES:-}" ]]; then
         echo "$CUDA_VISIBLE_DEVICES"
@@ -129,6 +128,12 @@ DEFAULT_METHODS=(
     DiffusionSimNPO
     DiffusionWGA
     DiffusionBST
+    DiffusionADU
+    DiffusionGD
+    DiffusionMDU
+    DiffusionRDU
+    DiffusionSDU
+    DiffusionSelectiveUnlearning
 )
 
 parse_methods() {
@@ -149,7 +154,7 @@ method_setup() {
     local method=$1
     METHOD_ARGS=()
     case "$method" in
-        DiffusionGradDiff)
+        DiffusionGD)
             [[ -n "${GRADDIFF_LR:-}" ]] && METHOD_ARGS=(trainer.args.learning_rate="${GRADDIFF_LR}")
             EXP=unlearn/tofu/dlm
             ;;
@@ -158,6 +163,7 @@ method_setup() {
         DiffusionADU)       EXP=unlearn/tofu/dlm_adu ;;
         DiffusionBST)       EXP=unlearn/tofu/dlm_bst ;;
         DiffusionSDU)       EXP=unlearn/tofu/dlm_sdu ;;
+        DiffusionSelectiveUnlearning) EXP=unlearn/tofu/dlm_selective_unlearning ;;
         *)                  EXP=unlearn/tofu/dlm ;;
     esac
     [[ -n "$EXP_OVERRIDE" ]] && EXP="$EXP_OVERRIDE"
@@ -170,8 +176,6 @@ tofu_train() {
     local nproc port
     nproc=$(ngpus "$GPUS")
     port=$(free_port "${MAIN_PORT:-29600}")
-    echo "[train] task=${task} epochs=${epochs} gpus=${GPUS} (${nproc})" \
-         "batch=${TRAIN_BS}x${GRAD_ACCUM}x${nproc}=$(( nproc * TRAIN_BS * GRAD_ACCUM ))" >&2
     CUDA_VISIBLE_DEVICES=${GPUS} accelerate launch \
         --config_file "${TRAIN_ACCEL}" --num_processes "${nproc}" --main_process_port "${port}" \
         src/train.py \
@@ -202,8 +206,6 @@ tofu_unlearn() {
     local nproc port
     nproc=$(ngpus "$GPUS")
     port=$(free_port "${MAIN_PORT:-29600}")
-    echo "[unlearn] trainer=${trainer} task=${task} epochs=${epochs} gpus=${GPUS} (${nproc})" \
-         "batch=${TRAIN_BS}x${GRAD_ACCUM}x${nproc}=$(( nproc * TRAIN_BS * GRAD_ACCUM ))" >&2
     CUDA_VISIBLE_DEVICES=${GPUS} accelerate launch \
         --config_file "${UNLEARN_ACCEL}" --num_processes "${nproc}" --main_process_port "${port}" \
         src/train.py --config-name=unlearn.yaml \
@@ -242,15 +244,12 @@ tofu_eval_args() {
     )
 }
 
-# tofu_eval <ckpt> <task> <forget> [hydra overrides...]
-# One checkpoint across all eval GPUs, output to the terminal.
 tofu_eval() {
     local ckpt=$1 task=$2 forget=$3; shift 3
     local gpus="${EVAL_GPUS:-$GPUS}" nproc port
     nproc=$(ngpus "$gpus")
     (( nproc > 0 )) || die "no GPU for eval (EVAL_GPUS='${EVAL_GPUS:-}' GPUS='$GPUS')"
     port=$(free_port "${EVAL_PORT:-29600}")
-    echo "[eval] task=${task} gpus=${gpus} (${nproc}) ckpt=${ckpt}" >&2
     tofu_eval_args "$ckpt" "$task" "$forget"
     CUDA_VISIBLE_DEVICES=${gpus} accelerate launch \
         --config_file "${EVAL_ACCEL}" --num_processes "${nproc}" --main_process_port "${port}" \
@@ -258,9 +257,9 @@ tofu_eval() {
 }
 
 tofu_eval_solo() {
-    local gpu=$1 ckpt=$2 task=$3 forget=$4 log=$5; shift 5
+    local gpu=$1 ckpt=$2 task=$3 forget=$4; shift 4
     tofu_eval_args "$ckpt" "$task" "$forget"
-    CUDA_VISIBLE_DEVICES=${gpu} python src/eval.py "${EVAL_ARGS[@]}" "$@" > "$log" 2>&1
+    CUDA_VISIBLE_DEVICES=${gpu} python src/eval.py "${EVAL_ARGS[@]}" "$@"
 }
 
 eval_plan_reset() { PLAN_TASKS=(); PLAN_CKPTS=(); PLAN_FORGETS=(); }
@@ -281,20 +280,17 @@ eval_plan_add() {
 
 eval_plan_run() {
     (( ${#PLAN_TASKS[@]} )) || { echo "nothing to evaluate"; return 0; }
-    local fail=0 i gpu log pid
+    local fail=0 i gpu
     if flag_on "${PARALLEL:-}"; then
         local gpu_list pids=()
         IFS=',' read -r -a gpu_list <<< "${EVAL_GPUS:-$GPUS}"
         (( ${#gpu_list[@]} )) || die "no GPU for eval (EVAL_GPUS='${EVAL_GPUS:-}' GPUS='$GPUS')"
-        mkdir -p logs/eval
         for i in "${!PLAN_TASKS[@]}"; do
             gpu="${gpu_list[$(( i % ${#gpu_list[@]} ))]}"
-            log="logs/eval/${PLAN_TASKS[$i]//\//_}.log"
-            echo "[gpu ${gpu}] ${PLAN_TASKS[$i]} -> ${log}"
             tofu_eval_solo "$gpu" "${PLAN_CKPTS[$i]}" "${PLAN_TASKS[$i]}" \
-                "${PLAN_FORGETS[$i]}" "$log" "$@" &
+                "${PLAN_FORGETS[$i]}" "$@" &
             pids+=($!)
-            sleep 3   # stagger the CUDA inits
+            sleep 3
         done
         for pid in "${pids[@]}"; do wait "$pid" || fail=1; done
     else

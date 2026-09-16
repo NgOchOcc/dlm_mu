@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 set -euo pipefail
-
 cd "$(dirname "$0")/../../.."
 
 export LOSS_WEIGHT_OVERRIDE=scheduler
@@ -12,10 +11,7 @@ gpus="${1:-0,1,2,3}"
 mkdir -p saves/sdu_cache
 
 precompute_cache() {
-    local model=$1
-    local split=$2
-    local cache="saves/sdu_cache/${model}_${FORGET}.json"
-
+    local split=$1 cache=$2
     CUDA_VISIBLE_DEVICES="${gpus%%,*}" \
         python scripts/dlm/sdu_precompute.py \
             --model-dir "$SFT_CKPT" \
@@ -35,17 +31,13 @@ for model in dream llada llada1.5; do
         task="$FORGET/tofu_${MODEL}_DiffusionSDU_beta10.0_preserve0.1"
         cache="saves/sdu_cache/${model}_${FORGET}.json"
 
-        echo "$model / $FORGET / $SPLIT_EPOCHS epochs"
-
-        if flag_on "${SKIP_DONE:-}" &&
-            [[ -f "saves/eval/$task/TOFU_SUMMARY.json" ]]; then
+        if flag_on "${SKIP_DONE:-}" && [[ -f "saves/eval/$task/TOFU_SUMMARY.json" ]]; then
             echo "[skip] $task already evaluated"
             continue
         fi
 
-        precompute_cache "$model" "$split"
+        precompute_cache "$split" "$cache"
         method_setup DiffusionSDU
-        echo "[train] $task"
 
         tofu_unlearn \
             DiffusionSDU \
@@ -61,15 +53,11 @@ for model in dream llada llada1.5; do
             "paths.output_dir=saves/unlearn/$task" \
             "$@"
 
-        if ! flag_on "${NO_EVAL:-}"; then
-            echo "[eval] $task"
-
-            tofu_eval \
-                "saves/unlearn/$task" \
-                "$task" \
-                "$FORGET" \
-                "paths.output_dir=saves/eval/$task"
-        fi
+        flag_on "${NO_EVAL:-}" || tofu_eval \
+            "saves/unlearn/$task" \
+            "$task" \
+            "$FORGET" \
+            "paths.output_dir=saves/eval/$task"
     done
 done
 

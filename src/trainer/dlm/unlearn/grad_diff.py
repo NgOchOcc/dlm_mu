@@ -1,7 +1,7 @@
 from trainer.dlm.unlearn.base import DiffusionUnlearnTrainer
 
 
-class DiffusionGradDiff(DiffusionUnlearnTrainer):
+class DiffusionGD(DiffusionUnlearnTrainer):
     """Gradient difference: ascend on forget, descend on retain.
 
     ``retain_loss_type`` only supports ``"NLL"`` for DLMs. The autoregressive
