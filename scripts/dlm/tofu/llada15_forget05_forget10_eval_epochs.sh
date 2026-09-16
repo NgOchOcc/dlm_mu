@@ -28,16 +28,15 @@ if (( $# > 0 )); then
     shift
 fi
 
-methods=(DiffusionGA DiffusionWGA)
-splits=(forget10)
+methods=(DiffusionGA DiffusionWGA DiffusionNPO DiffusionSimNPO)
+splits=(forget05)
 
 dlm_config llada1.5 "$gpus"
 mkdir -p logs/per_epoch logs/eval
 
 schedule_for_split() {
     case "$1" in
-        # forget05) epochs=15; eval_every=3 ;;
-        forget10) epochs=10; eval_every=1 ;;
+        forget05) epochs=4; eval_every=4 ;;
         *) die "unsupported split: $1" ;;
     esac
 }
