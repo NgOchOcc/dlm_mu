@@ -1,11 +1,12 @@
+"""Render TOFU evaluation summaries as comparable terminal tables."""
+
 import argparse
 import json
 import re
 import sys
 from pathlib import Path
 
-EVAL_DIR = Path("saves/eval")
-USE_SYNTHETIC_RDU_FLUENCY = False
+DEFAULT_EVAL_DIR = Path("saves/eval")
 ERASING_KNOWLEDGE_COMPONENTS = {
     "forget_Q_A_Prob": "lower",
     "forget_Q_A_ROUGE": "lower",
@@ -15,18 +16,18 @@ ERASING_JUDGE_COMPONENTS = {
     "forget_Q_A_Relevance": "judge_higher",
     "forget_Q_A_Correctness": "judge_lower",
 }
-UTILITY_DATASETS = {
-    "retain": {
+UTILITY_COMPONENT_GROUPS = (
+    {
         "retain_Q_A_Prob": "higher",
         "retain_Q_A_ROUGE": "higher",
     },
-    "ra": {
+    {
         "ra_Q_A_ROUGE": "higher",
     },
-    "wf": {
+    {
         "wf_Q_A_ROUGE": "higher",
     },
-}
+)
 LINGUISTIC_COMPONENTS = {
     "forget_Q_A_Fluency": "judge_higher",
     "retain_Q_A_Fluency": "judge_higher",
@@ -34,16 +35,18 @@ LINGUISTIC_COMPONENTS = {
     "wf_Q_A_Fluency": "judge_higher",
 }
 
-def _hmean(vals):
-    if not vals or any(not isinstance(v, (int, float)) for v in vals):
+def _hmean(values):
+    if not values or any(not isinstance(value, (int, float)) for value in values):
         return None
-    return 0.0 if min(vals) <= 0.0 else float(len(vals) / sum(1.0 / v for v in vals))
+    if min(values) <= 0.0:
+        return 0.0
+    return float(len(values) / sum(1.0 / value for value in values))
 
 
-def _amean(vals):
-    if any(not isinstance(v, (int, float)) for v in vals):
+def _amean(values):
+    if any(not isinstance(value, (int, float)) for value in values):
         return None
-    return float(sum(vals) / len(vals))
+    return float(sum(values) / len(values))
 
 
 def _score_unit(value, direction):
@@ -81,12 +84,15 @@ def _component_amean(data, components):
 
 
 GROUPS = [
-    ("Final Scores", [
-        ("erase_quality", "EQ"),
-        ("model_utility", "MU"),
-        ("linguistic_quality", "LQ"),
-        ("final_average", "AVG"),
-    ]),
+    (
+        "Final Scores",
+        [
+            ("erase_quality", "EQ"),
+            ("model_utility", "MU"),
+            ("linguistic_quality", "LQ"),
+            ("final_average", "AVG"),
+        ],
+    ),
 ]
 
 DETAIL_GROUPS = [
@@ -138,10 +144,6 @@ JUDGE_METRICS = {
     "wf_Q_A_Fluency",
     "wf_Q_A_Relevance",
     "wf_Q_A_Correctness",
-    "erase_quality",
-    "model_utility",
-    "linguistic_quality",
-    "final_average",
 }
 FINAL_SCORE_METRICS = {
     "erase_quality",
@@ -149,10 +151,15 @@ FINAL_SCORE_METRICS = {
     "linguistic_quality",
     "final_average",
 }
-COLS = [(key, header) for _, cols in GROUPS for key, header in cols]
 METHOD_ORDER = {
-    "GA": 4, "GradAscent": 4, "GradDiff": 5, "NPO": 6, "SimNPO": 7,
-    "WGA": 8, "RDU": 1000, "RepelGenDistill": 1000,
+    "GA": 4,
+    "GradAscent": 4,
+    "GradDiff": 5,
+    "NPO": 6,
+    "SimNPO": 7,
+    "WGA": 8,
+    "RDU": 1000,
+    "RepelGenDistill": 1000,
 }
 
 FORGET_ONLY_SUFFIXES = ("_forgetonly", "_forget_only")
@@ -162,8 +169,6 @@ DISPLAY_METHOD = {
     "GradAscent": "GA",
     "RepelGenDistill": "RDU",
 }
-    
-# Historical result names are retained in the aliases above.
 
 
 def _split_forget_only(core):
@@ -188,44 +193,58 @@ def _is_simple_method(base_method):
     """True for a clean baseline method."""
     return base_method in SIMPLE_METHODS
 
+
 # Optional epoch tags used by training/evaluation scripts. They are stripped
 # before method categorisation but retained in the displayed row label.
 _EPOCHS_RE = re.compile(r"_(?:(\d+)epochs|ep(\d+))$")
 
+
 def _strip_epochs(label):
     return _EPOCHS_RE.sub("", label)
 
+
 def _epochs_of(label):
-    m = _EPOCHS_RE.search(label)
-    return int(m.group(1) or m.group(2)) if m else 0
+    match = _EPOCHS_RE.search(label)
+    return int(match.group(1) or match.group(2)) if match else 0
+
 
 def _epoch_label(label):
     epoch = _epochs_of(label)
     return f"_ep{epoch:02d}" if epoch else ""
 
 
+def _method_parts(label):
+    return _split_forget_only(_strip_epochs(label.rsplit("/", 1)[-1]))
+
+
+def _normalized_name(name):
+    return re.sub(r"[^a-z0-9]", "", name.casefold())
+
+
 def _method_matches(method, selected_method):
     if selected_method is None:
         return True
-    _, method_name = _split_forget_only(_strip_epochs(method.rsplit("/", 1)[-1]))
-    _, selected_name = _split_forget_only(
-        _strip_epochs(selected_method.rsplit("/", 1)[-1])
-    )
+    _, method_name = _method_parts(method)
+    _, selected_name = _method_parts(selected_method)
     method_name = DISPLAY_METHOD.get(method_name, method_name)
     selected_name = DISPLAY_METHOD.get(selected_name, selected_name)
-    return method_name.casefold().startswith(selected_name.casefold())
+    return _normalized_name(method_name).startswith(_normalized_name(selected_name))
+
+
+def _model_matches(model, selected_model):
+    if selected_model is None:
+        return True
+    return _normalized_name(model).startswith(_normalized_name(selected_model))
+
 
 FORGET_SPLITS = ["forget01", "forget05", "forget10"]
 RETAIN_FOR = {"forget01": "retain99", "forget05": "retain95", "forget10": "retain90"}
 EXCLUDE_METHODS = {"NullAnchor", "AMTU", "TMOPU", "FCP", "CFTMOPU", "OCPE"}
 EXCLUDE_METHOD_PREFIXES = (
     "SimpleTSD",
-    "SimpleTSDQMask",
     "TSD",
-    "UniformTSDM",
     "UniformTSD",
     "UTSD",
-    "SBRUTSD",
     "SBRU",
     "Rollout",
     "ConceptSubspace",
@@ -236,10 +255,12 @@ EXCLUDE_SUFFIXES = ("_oldbase",)
 
 
 def _is_excluded_method(base_method):
+    normalized = _normalized_name(base_method)
     return base_method in EXCLUDE_METHODS or any(
-        base_method.casefold().startswith(prefix.casefold())
+        normalized.startswith(_normalized_name(prefix))
         for prefix in EXCLUDE_METHOD_PREFIXES
     )
+
 
 def _is_diagnostic(name):
     return name.endswith(EXCLUDE_SUFFIXES) or any(
@@ -257,53 +278,29 @@ LOWER_BETTER = {
     "forget_Q_A_Correctness",
 }
 
-# ---------------------------------------------------------------------------
-# MUSE benchmark (News / Books splits) — rendered as separate tables from TOFU.
-# Different metrics, splits, and no linguistic-judge dimensions. All four metrics
-# are ROUGE-like fractions shown x100. The three forget metrics are lower-better;
-# retain knowledge-memorisation is higher-better. The reference row is the SFT
-# target (saves/eval/muse_<model>_<split>_full) if it has been evaluated; every
-# method dir here is forget-only by construction, so the "_forget_only" tag is
-# stripped from the printed label.
-# ---------------------------------------------------------------------------
-MUSE_SPLITS = ["News", "Books"]
-GROUPS_MUSE = [
-    ("Forget", [
-        ("forget_verbmem_ROUGE", "f_VM"),
-        ("forget_knowmem_ROUGE", "f_KM"),
-        ("extraction_strength", "f_ES"),
-    ]),
-    ("Retain", [
-        ("retain_knowmem_ROUGE", "ret_KM"),
-    ]),
-]
-COLS_MUSE = [(key, header) for _, cols in GROUPS_MUSE for key, header in cols]
-JUDGE_METRICS_MUSE = set()
-LOWER_BETTER_MUSE = {
-    "forget_verbmem_ROUGE", "forget_knowmem_ROUGE", "extraction_strength",
-}
-MUSE_FORGET_ONLY_SUFFIX = "_forget_only"
+def _read_json(path):
+    try:
+        return json.loads(path.read_text())
+    except (OSError, json.JSONDecodeError):
+        return None
 
-def load_summary(eval_dir):
+
+def load_summary(eval_dir, synthetic_rdu_fluency=False):
     if not eval_dir.is_dir():
         return None
     noprompt = eval_dir / "TOFU_SUMMARY_noprompt.json"
     summary = noprompt if noprompt.exists() else eval_dir / "TOFU_SUMMARY.json"
     if not summary.exists():
         return None
-    try:
-        data = json.loads(summary.read_text())
-    except (OSError, json.JSONDecodeError):
+    data = _read_json(summary)
+    if data is None:
         return None
-    if USE_SYNTHETIC_RDU_FLUENCY and eval_dir.name.endswith(
+    if synthetic_rdu_fluency and eval_dir.name.endswith(
         ("DiffusionRDU", "DiffusionRepelGenDistill")
     ):
         synthetic_path = eval_dir / "forget_Q_A_Fluency_synthetic.json"
         if synthetic_path.exists():
-            try:
-                synthetic = json.loads(synthetic_path.read_text())
-            except (OSError, json.JSONDecodeError):
-                synthetic = {}
+            synthetic = _read_json(synthetic_path) or {}
             synthetic_value = synthetic.get("agg_value")
             if isinstance(synthetic_value, (int, float)):
                 data["forget_Q_A_Fluency"] = synthetic_value
@@ -315,7 +312,7 @@ def load_summary(eval_dir):
 
     dataset_utilities = [
         _component_hmean(data, components, skip_missing=True)
-        for components in UTILITY_DATASETS.values()
+        for components in UTILITY_COMPONENT_GROUPS
     ]
     dataset_utilities = [value for value in dataset_utilities if value is not None]
     model_utility = _hmean(dataset_utilities)
@@ -337,8 +334,8 @@ def load_summary(eval_dir):
     return data
 
 
-def _forget_split_for(eval_dir):
-    relative = eval_dir.relative_to(EVAL_DIR)
+def _forget_split_for(eval_dir, eval_root):
+    relative = eval_dir.relative_to(eval_root)
     for part in relative.parts[:-1]:
         if part in FORGET_SPLITS:
             return part
@@ -358,52 +355,64 @@ def _forget_split_for(eval_dir):
     return match.group(1) if match else None
 
 
-def discover_method_runs():
+def discover_method_runs(eval_root):
     runs = []
-    for summary in EVAL_DIR.rglob("TOFU_SUMMARY.json"):
+    for summary in eval_root.rglob("TOFU_SUMMARY.json"):
         eval_dir = summary.parent
         match = re.match(r"tofu_(.+?)_Diffusion(.+)$", eval_dir.name)
         if not match:
             continue
-        forget_split = _forget_split_for(eval_dir)
+        forget_split = _forget_split_for(eval_dir, eval_root)
         if forget_split is not None:
             runs.append((forget_split, match.group(1), match.group(2), eval_dir))
     return sorted(runs, key=lambda item: str(item[3]))
 
 
-def _run_source_label(eval_dir, forget_split):
-    parent = eval_dir.parent.relative_to(EVAL_DIR)
+def _run_source_label(eval_dir, eval_root, forget_split):
+    parent = eval_dir.parent.relative_to(eval_root)
     return "" if parent in {Path("."), Path(forget_split)} else f"{parent.as_posix()}/"
 
 
-def discover_models():
-    models = {model for _, model, _, _ in discover_method_runs()}
-    for rd in EVAL_DIR.glob("tofu_*_retain*"):
-        m = re.match(r"tofu_(.+)_retain\d+", rd.name)
-        if m:
-            models.add(m.group(1))
-    return sorted(m for m in models if not _is_diagnostic(m))
+def discover_models(eval_root, method_runs):
+    models = {model for _, model, _, _ in method_runs}
+    for eval_dir in eval_root.glob("tofu_*_retain*"):
+        match = re.match(r"tofu_(.+)_retain\d+", eval_dir.name)
+        if match:
+            models.add(match.group(1))
+    return sorted(model for model in models if not _is_diagnostic(model))
 
 
-def collect_rows(model, forget_split, mode="both", selected_method=None):
+def collect_rows(
+    eval_root,
+    method_runs,
+    model,
+    forget_split,
+    mode="both",
+    selected_method=None,
+    synthetic_rdu_fluency=False,
+):
     rows = []
-    base = load_summary(EVAL_DIR / f"tofu_{model}_retain100_{forget_split}")
+    base = load_summary(
+        eval_root / f"tofu_{model}_retain100_{forget_split}",
+        synthetic_rdu_fluency,
+    )
     if base is not None:
         rows.append(("base", base))
 
     retain = RETAIN_FOR[forget_split]
-    retain_data = load_summary(EVAL_DIR / f"tofu_{model}_{retain}")
+    retain_data = load_summary(
+        eval_root / f"tofu_{model}_{retain}", synthetic_rdu_fluency
+    )
     if retain_data is not None:
         rows.append((retain, retain_data))
 
     methods = []
-    for split, run_model, method, md in discover_method_runs():
+    for split, run_model, method, eval_dir in method_runs:
         if split != forget_split or run_model != model:
             continue
         if not _method_matches(method, selected_method):
             continue
-        core = _strip_epochs(method)
-        is_forget_only, base_method = _split_forget_only(core)
+        is_forget_only, base_method = _method_parts(method)
         if _is_excluded_method(base_method) or _is_diagnostic(method):
             continue
         if mode == "forget_only" and not (is_forget_only or _is_inherent_forget_only(base_method)):
@@ -414,9 +423,9 @@ def collect_rows(model, forget_split, mode="both", selected_method=None):
             and (is_forget_only or _is_inherent_forget_only(base_method))
         ):
             continue
-        data = load_summary(md)
+        data = load_summary(eval_dir, synthetic_rdu_fluency)
         if data is not None:
-            source = _run_source_label(md, forget_split)
+            source = _run_source_label(eval_dir, eval_root, forget_split)
             display_method = (
                 f"{base_method}{_epoch_label(method)}"
                 if mode == "forget_only"
@@ -427,53 +436,6 @@ def collect_rows(model, forget_split, mode="both", selected_method=None):
     methods.sort(key=lambda r: _method_rank(r[0]))
     if selected_method is not None and not methods:
         return []
-    rows.extend(methods)
-    return rows
-
-
-def load_summary_muse(eval_dir):
-    if not eval_dir.is_dir():
-        return None
-    summary = eval_dir / "MUSE_SUMMARY.json"
-    if not summary.exists():
-        return None
-    try:
-        return json.loads(summary.read_text())
-    except (OSError, json.JSONDecodeError):
-        return None
-
-
-def discover_models_muse():
-    models = set()
-    for split in MUSE_SPLITS:
-        for md in EVAL_DIR.glob(f"muse_*_{split}_Diffusion*"):
-            m = re.match(rf"muse_(.+)_{split}_Diffusion", md.name)
-            if m:
-                models.add(m.group(1))
-    return sorted(models)
-
-
-def collect_rows_muse(model, split, mode="both"):
-    rows = []
-    base = load_summary_muse(EVAL_DIR / f"muse_{model}_{split}_full")
-    if base is not None:
-        rows.append(("base", base))
-
-    methods = []
-    for md in EVAL_DIR.glob(f"muse_{model}_{split}_Diffusion*"):
-        method = md.name.split("Diffusion")[-1]
-        if method.endswith(MUSE_FORGET_ONLY_SUFFIX):
-            method = method[: -len(MUSE_FORGET_ONLY_SUFFIX)]
-        method = DISPLAY_METHOD.get(method, method)
-        _, base_method = _split_forget_only(_strip_epochs(method))
-        if _is_excluded_method(base_method):
-            continue
-        if mode == "simple" and not _is_simple_method(base_method):
-            continue
-        data = load_summary_muse(md)
-        if data is not None:
-            methods.append((method, data))
-    methods.sort(key=lambda r: _method_rank(r[0]))
     rows.extend(methods)
     return rows
 
@@ -495,18 +457,18 @@ def _render_block(data, col_ranks, groups, judge_metrics, force_white=False):
     for _, cols in groups:
         block = ""
         for key, _ in cols:
-            val = data.get(key)
-            if not isinstance(val, (int, float)):
+            value = data.get(key)
+            if not isinstance(value, (int, float)):
                 block += f"{'-':>{COL_W}}"
                 continue
             if key in FINAL_SCORE_METRICS:
-                display_value = val
+                display_value = value
             elif key in judge_metrics:
-                display_value = val / 10.0
+                display_value = value / 10.0
             else:
-                display_value = val
+                display_value = value
             text = f"{display_value:{COL_W}.2f}"
-            rank = col_ranks.get(key, {}).get(val)
+            rank = col_ranks.get(key, {}).get(value)
             if not force_white and rank == 1:
                 text = f"{TOP_ONE}{text}{RESET}"
             elif not force_white and rank == 2:
@@ -520,9 +482,13 @@ def _render_block(data, col_ranks, groups, judge_metrics, force_white=False):
 
 
 def _method_rank(label):
-    core = _strip_epochs(label.rsplit("/", 1)[-1])
-    is_forget_only, base_method = _split_forget_only(core)
-    return (METHOD_ORDER.get(base_method, 99), base_method, is_forget_only, _epochs_of(label))
+    is_forget_only, base_method = _method_parts(label)
+    return (
+        METHOD_ORDER.get(base_method, 99),
+        base_method,
+        is_forget_only,
+        _epochs_of(label),
+    )
 
 
 def _label_order(label, retain_name):
@@ -533,6 +499,7 @@ def _label_order(label, retain_name):
     order, base_method, is_forget_only, epochs = _method_rank(label)
     return (2 + order, base_method, is_forget_only, epochs)
 
+
 def _row(segments, widths):
     cells = [f" {seg}{' ' * (w - _visible(seg))} " for seg, w in zip(segments, widths)]
     return "│" + "│".join(cells) + "│"
@@ -541,6 +508,7 @@ def _rule(left, mid, right, widths):
     return left + mid.join("─" * (w + 2) for w in widths) + right
 
 _ANSI = re.compile(r"\x1b\[[0-9;]*m")
+
 
 def _visible(s):
     return len(_ANSI.sub("", s))
@@ -558,14 +526,14 @@ def print_table(title, model_rows, models, retain_name, groups, cols, judge_metr
         rows = model_rows.get(model, {})
         col_ranks = {}
         for key, _ in cols:
-            vals = [
+            values = [
                 data[key]
                 for label, data in rows.items()
                 if label not in {"base", retain_name}
                 and isinstance(data.get(key), (int, float))
             ]
-            if vals:
-                ranked = sorted(set(vals), reverse=key not in lower_better)
+            if values:
+                ranked = sorted(set(values), reverse=key not in lower_better)
                 col_ranks[key] = {
                     value: rank for rank, value in enumerate(ranked[:2], start=1)
                 }
@@ -573,7 +541,7 @@ def print_table(title, model_rows, models, retain_name, groups, cols, judge_metr
 
     print(f"\n## {title}")
     print(_rule("╭", "┬", "╮", widths))
-    print(_row([""] + [f"{m:^{block_w}}" for m in models], widths))
+    print(_row([""] + [f"{model:^{block_w}}" for model in models], widths))
     print(_row([""] + [group_one] * len(models), widths))
     print(_row(["method"] + [metric_one] * len(models), widths))
     print(_rule("├", "┼", "┤", widths))
@@ -600,12 +568,11 @@ def print_table(title, model_rows, models, retain_name, groups, cols, judge_metr
 
 
 def main():
-    global EVAL_DIR, USE_SYNTHETIC_RDU_FLUENCY
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument(
         "--eval-dir",
         type=Path,
-        default=EVAL_DIR,
+        default=DEFAULT_EVAL_DIR,
         help="Evaluation root to scan recursively (default: saves/eval).",
     )
     ap.add_argument(
@@ -642,24 +609,39 @@ def main():
         help="Only show methods matching this case-insensitive name prefix, plus "
         "their base and retain reference rows.",
     )
+    ap.add_argument(
+        "--model",
+        default=None,
+        help="Only show models matching this case-insensitive name prefix.",
+    )
     args = ap.parse_args()
-    EVAL_DIR = args.eval_dir
-    USE_SYNTHETIC_RDU_FLUENCY = args.synthetic_rdu_fluency
-    synthetic_label = " [SYNTHETIC RDU FLUENCY]" if USE_SYNTHETIC_RDU_FLUENCY else ""
+    synthetic_label = (
+        " [SYNTHETIC RDU FLUENCY]" if args.synthetic_rdu_fluency else ""
+    )
     groups = DETAIL_GROUPS if args.detail else GROUPS
     cols = [(key, header) for _, group_cols in groups for key, header in group_cols]
     detail_label = " [DETAIL]" if args.detail else ""
     splits = [args.split] if args.split else FORGET_SPLITS
+    method_runs = discover_method_runs(args.eval_dir)
+    models = [
+        model
+        for model in discover_models(args.eval_dir, method_runs)
+        if _model_matches(model, args.model)
+    ]
+
     for forget_split in splits:
         model_rows = {}
         present = []
-        for model in discover_models():
+        for model in models:
             block = dict(
                 collect_rows(
+                    args.eval_dir,
+                    method_runs,
                     model,
                     forget_split,
                     mode=args.mode,
                     selected_method=args.method,
+                    synthetic_rdu_fluency=args.synthetic_rdu_fluency,
                 )
             )
             if not block:
@@ -681,22 +663,6 @@ def main():
                     groups, cols, JUDGE_METRICS, LOWER_BETTER,
                 )
 
-    muse_models = discover_models_muse()
-    for split in MUSE_SPLITS:
-        model_rows = {}
-        present = []
-        for model in muse_models:
-            block = dict(collect_rows_muse(model, split, mode=args.mode))
-            if not block:
-                continue
-            present.append(model)
-            model_rows[model] = block
-        if model_rows:
-            print_table(
-                f"MUSE {split}  (Forget f_VM/f_KM/f_ES ↓ better, Retain ret_KM ↑ better)",
-                model_rows, present, None,
-                GROUPS_MUSE, COLS_MUSE, JUDGE_METRICS_MUSE, LOWER_BETTER_MUSE,
-            )
     print()
 
 if __name__ == "__main__":

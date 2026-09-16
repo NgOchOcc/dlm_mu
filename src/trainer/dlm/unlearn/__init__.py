@@ -8,6 +8,8 @@ from trainer.dlm.unlearn.mdu import DiffusionMDU
 from trainer.dlm.unlearn.repel_gendistill import DiffusionRDU
 from trainer.dlm.unlearn.adu import DiffusionADU
 from trainer.dlm.unlearn.bst import DiffusionBST
+from trainer.dlm.unlearn.selective_unlearning import DiffusionSelectiveUnlearning
+from trainer.dlm.unlearn.sdu import DiffusionSDU
 
 __all__ = [
     "DiffusionUnlearnTrainer",
@@ -20,4 +22,6 @@ __all__ = [
     "DiffusionRDU",
     "DiffusionADU",
     "DiffusionBST",
+    "DiffusionSelectiveUnlearning",
+    "DiffusionSDU",
 ]

@@ -1,0 +1,9 @@
+defaults:
+  - DiffusionSelectiveUnlearning
+
+handler: DiffusionSDU
+method_args:
+  # Path to the offline Monte Carlo mask cache produced by
+  # scripts/dlm/sdu_precompute.py (must cover this split with this base
+  # checkpoint before training).
+  mask_cache_path: ???

@@ -2,10 +2,16 @@
 # Train and optionally evaluate one or more DLM unlearning methods.
 # Usage: bash scripts/dlm/tofu/unlearn.sh <dream|llada> [gpus] [splits] [methods] [overrides...]
 set -euo pipefail
+umask 0000
 cd "$(dirname "$0")/../../.." || exit 1
 
 export LOSS_WEIGHT_OVERRIDE="${LOSS_WEIGHT_OVERRIDE:-scheduler}"
 source scripts/dlm/lib.sh
+
+OUTPUT_ROOT="${OUTPUT_ROOT:-saves}"
+export OUTPUT_ROOT
+mkdir -p "${OUTPUT_ROOT}/unlearn" "${OUTPUT_ROOT}/eval"
+echo "[output] ${OUTPUT_ROOT}" >&2
 
 dlm_config "${1:-}" "${2:-}"
 IFS=', ' read -r -a splits <<< "${3:-unlearn90}"
@@ -34,8 +40,10 @@ for index in "${!splits[@]}"; do
         echo "==================== ${task} (${epochs} epochs) ====================" >&2
         method_setup "$method"
         tofu_unlearn "$method" "$task" "$FORGET" "$RETAIN" "$HOLDOUT" "$epochs" \
-            "${METHOD_ARGS[@]}" "$@"
-        flag_on "${NO_EVAL:-}" || tofu_eval "${OUTPUT_ROOT}/unlearn/${task}" "$task" "$FORGET"
+            "${METHOD_ARGS[@]}" "paths.output_dir=${OUTPUT_ROOT}/unlearn/${task}" "$@"
+        flag_on "${NO_EVAL:-}" || tofu_eval \
+            "${OUTPUT_ROOT}/unlearn/${task}" "$task" "$FORGET" \
+            "paths.output_dir=${OUTPUT_ROOT}/eval/${task}"
     done
 done
 

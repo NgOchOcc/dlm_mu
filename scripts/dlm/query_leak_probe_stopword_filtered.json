@@ -1,0 +1,1461 @@
+[
+  {
+    "question": "What is the full name of the author born in Taipei, Taiwan on 05/11/1991 who writes in the genre of leadership?",
+    "answer": "The author's full name is Hsiao Yun-Hwa.",
+    "words": [
+      "What",
+      "is",
+      "the",
+      "full",
+      "name",
+      "of",
+      "the",
+      "author",
+      "born",
+      "in",
+      "Taipei",
+      "Taiwan",
+      "on",
+      "05111991",
+      "who",
+      "writes",
+      "in",
+      "the",
+      "genre",
+      "of",
+      "leadership"
+    ],
+    "importance": [
+      3.291069627375691,
+      1.6020803042112248,
+      1.7521584980803626,
+      3.1821591487241676,
+      2.4874962387693813,
+      1.5839488740201066,
+      1.0471118345536148,
+      2.664608352453797,
+      2.9619301465422136,
+      2.5917367014483297,
+      3.48573721891765,
+      3.0994595571101513,
+      2.4593345200396417,
+      1.9362022883249628,
+      2.5146081864793177,
+      2.1070438703609398,
+      1.691702623720399,
+      3.128140514876577,
+      1.6293124194046305,
+      3.021160817600321,
+      2.7687142774035847
+    ],
+    "heuristic_selected": [
+      10,
+      11,
+      13
+    ],
+    "entry_k": {
+      "10": 10,
+      "11": 25,
+      "20": 40
+    },
+    "k_percents": [
+      10,
+      20,
+      25,
+      30,
+      40,
+      50
+    ],
+    "rows": [
+      {
+        "key": "none",
+        "label": "Nothing masked",
+        "selected": [],
+        "n_selected": 0,
+        "log_p": -0.0024471364449709654,
+        "prob": 0.997555855352476,
+        "y_hat": "The author's full name is Hsiao Yun-Hwa.",
+        "matches": true
+      },
+      {
+        "key": "heuristic",
+        "label": "Heuristic set masked",
+        "selected": [
+          10,
+          11,
+          13
+        ],
+        "n_selected": 3,
+        "log_p": -3.521974563598633,
+        "prob": 0.029541046865348634,
+        "y_hat": "The author's full name is Adrial Thereere.",
+        "matches": false
+      },
+      {
+        "key": "mc_top10",
+        "label": "MC top-10% masked",
+        "selected": [
+          10
+        ],
+        "n_selected": 1,
+        "log_p": -0.00472662877291441,
+        "prob": 0.9952845241580235,
+        "y_hat": "The author's full name is Hsiao Yun-Hwa.",
+        "matches": true
+      },
+      {
+        "key": "mc_top20",
+        "label": "MC top-20% masked",
+        "selected": [
+          10
+        ],
+        "n_selected": 1,
+        "log_p": -0.0047266604378819466,
+        "prob": 0.9952844926423718,
+        "y_hat": "The author's full name is Hsiao Yun-Hwa.",
+        "matches": true
+      },
+      {
+        "key": "mc_top25",
+        "label": "MC top-25% masked",
+        "selected": [
+          10,
+          11
+        ],
+        "n_selected": 2,
+        "log_p": -3.0759942531585693,
+        "prob": 0.046143727020336506,
+        "y_hat": "The author's full name is isela Thprere..",
+        "matches": false
+      },
+      {
+        "key": "mc_top30",
+        "label": "MC top-30% masked",
+        "selected": [
+          10,
+          11
+        ],
+        "n_selected": 2,
+        "log_p": -3.0759944915771484,
+        "prob": 0.046143716018815985,
+        "y_hat": "The author's full name is isela Thprere..",
+        "matches": false
+      },
+      {
+        "key": "mc_top40",
+        "label": "MC top-40% masked",
+        "selected": [
+          10,
+          11,
+          20
+        ],
+        "n_selected": 3,
+        "log_p": -4.226480960845947,
+        "prob": 0.014603691192087227,
+        "y_hat": "The author's full name is isela Thprarez.",
+        "matches": false
+      },
+      {
+        "key": "mc_top50",
+        "label": "MC top-50% masked",
+        "selected": [
+          10,
+          11,
+          20
+        ],
+        "n_selected": 3,
+        "log_p": -4.226480960845947,
+        "prob": 0.014603691192087227,
+        "y_hat": "The author's full name is isela Thprarez.",
+        "matches": false
+      },
+      {
+        "key": "all",
+        "label": "Everything masked",
+        "selected": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15,
+          16,
+          17,
+          18,
+          19,
+          20
+        ],
+        "n_selected": 21,
+        "log_p": -6.4994378089904785,
+        "prob": 0.001504284650607298,
+        "y_hat": "The patient's is  2  .",
+        "matches": false
+      }
+    ]
+  },
+  {
+    "question": "What does Hsiao Yun-Hwa identify as in terms of gender?",
+    "answer": "Hsiao Yun-Hwa is part of the LGBTQ+ community.",
+    "words": [
+      "What",
+      "does",
+      "Hsiao",
+      "Yun-Hwa",
+      "identify",
+      "as",
+      "in",
+      "terms",
+      "of",
+      "gender"
+    ],
+    "importance": [
+      3.635075551822656,
+      2.7130857486994575,
+      5.436880194283415,
+      3.6406944685013256,
+      3.4302980310222626,
+      3.092928399595334,
+      2.964073435912438,
+      3.520197171041218,
+      3.645036735233632,
+      3.117793548175541
+    ],
+    "heuristic_selected": [
+      2,
+      3
+    ],
+    "entry_k": {
+      "2": 10,
+      "3": 30,
+      "7": 50
+    },
+    "k_percents": [
+      10,
+      20,
+      25,
+      30,
+      40,
+      50
+    ],
+    "rows": [
+      {
+        "key": "none",
+        "label": "Nothing masked",
+        "selected": [],
+        "n_selected": 0,
+        "log_p": -7.837511657271534e-05,
+        "prob": 0.9999216279546765,
+        "y_hat": "Hsiao Yun-Hwa is part of the LGBTQ+ community.",
+        "matches": true
+      },
+      {
+        "key": "heuristic",
+        "label": "Heuristic set masked",
+        "selected": [
+          2,
+          3
+        ],
+        "n_selected": 2,
+        "log_p": -5.127987861633301,
+        "prob": 0.005928477397238727,
+        "y_hat": "The author Jealaf Rodriguez identifies as of LGBTQ+ community community.",
+        "matches": false
+      },
+      {
+        "key": "mc_top10",
+        "label": "MC top-10% masked",
+        "selected": [
+          2
+        ],
+        "n_selected": 1,
+        "log_p": -4.158905982971191,
+        "prob": 0.01562464219766679,
+        "y_hat": "The author Lee Yun-Hwa is part of the++ community",
+        "matches": false
+      },
+      {
+        "key": "mc_top20",
+        "label": "MC top-20% masked",
+        "selected": [
+          2
+        ],
+        "n_selected": 1,
+        "log_p": -4.158905982971191,
+        "prob": 0.01562464219766679,
+        "y_hat": "The author Lee Yun-Hwa is part of the++ community",
+        "matches": false
+      },
+      {
+        "key": "mc_top25",
+        "label": "MC top-25% masked",
+        "selected": [
+          2
+        ],
+        "n_selected": 1,
+        "log_p": -4.158905982971191,
+        "prob": 0.01562464219766679,
+        "y_hat": "The author Lee Yun-Hwa is part of the++ community",
+        "matches": false
+      },
+      {
+        "key": "mc_top30",
+        "label": "MC top-30% masked",
+        "selected": [
+          2,
+          3
+        ],
+        "n_selected": 2,
+        "log_p": -5.127987861633301,
+        "prob": 0.005928477397238727,
+        "y_hat": "The author Jealaf Rodriguez identifies as of LGBTQ+ community community.",
+        "matches": false
+      },
+      {
+        "key": "mc_top40",
+        "label": "MC top-40% masked",
+        "selected": [
+          2,
+          3
+        ],
+        "n_selected": 2,
+        "log_p": -5.127987384796143,
+        "prob": 0.005928480224157716,
+        "y_hat": "The author Jealaf Rodriguez identifies as of LGBTQ+ community community.",
+        "matches": false
+      },
+      {
+        "key": "mc_top50",
+        "label": "MC top-50% masked",
+        "selected": [
+          2,
+          3,
+          7
+        ],
+        "n_selected": 3,
+        "log_p": -5.074049472808838,
+        "prob": 0.006257031092093055,
+        "y_hat": "The author,alum Rodriguez identifies as of LGBTQ+ community community",
+        "matches": false
+      },
+      {
+        "key": "all",
+        "label": "Everything masked",
+        "selected": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9
+        ],
+        "n_selected": 10,
+        "log_p": -6.838698387145996,
+        "prob": 0.001071497166855574,
+        "y_hat": "Yes, the of the the the the is the....",
+        "matches": false
+      }
+    ]
+  },
+  {
+    "question": "What is the profession of Hsiao Yun-Hwa's father?",
+    "answer": "The father of Hsiao Yun-Hwa is a civil engineer.",
+    "words": [
+      "What",
+      "is",
+      "the",
+      "profession",
+      "of",
+      "Hsiao",
+      "Yun-Hwa's",
+      "father"
+    ],
+    "importance": [
+      2.8638737730316675,
+      1.8917901697568595,
+      1.1936618801264558,
+      2.9939088680166828,
+      2.6801724135432217,
+      4.865915847796144,
+      4.251228154907849,
+      3.6536025839159265
+    ],
+    "heuristic_selected": [
+      5,
+      6
+    ],
+    "entry_k": {
+      "5": 10,
+      "6": 20,
+      "3": 50
+    },
+    "k_percents": [
+      10,
+      20,
+      25,
+      30,
+      40,
+      50
+    ],
+    "rows": [
+      {
+        "key": "none",
+        "label": "Nothing masked",
+        "selected": [],
+        "n_selected": 0,
+        "log_p": -0.0006790254265069962,
+        "prob": 0.9993212050590864,
+        "y_hat": "The father of Hsiao Yun-Hwa is a civil engineer.",
+        "matches": true
+      },
+      {
+        "key": "heuristic",
+        "label": "Heuristic set masked",
+        "selected": [
+          5,
+          6
+        ],
+        "n_selected": 2,
+        "log_p": -6.645939826965332,
+        "prob": 0.001299286739555117,
+        "y_hat": "Jurelio Sprong's father is a renownediatrist.",
+        "matches": false
+      },
+      {
+        "key": "mc_top10",
+        "label": "MC top-10% masked",
+        "selected": [
+          5
+        ],
+        "n_selected": 1,
+        "log_p": -0.39229094982147217,
+        "prob": 0.675507546566312,
+        "y_hat": "The father of Yunsiao Yun-Hwa is a civil engineer.",
+        "matches": false
+      },
+      {
+        "key": "mc_top20",
+        "label": "MC top-20% masked",
+        "selected": [
+          5,
+          6
+        ],
+        "n_selected": 2,
+        "log_p": -6.645939826965332,
+        "prob": 0.001299286739555117,
+        "y_hat": "Jurelio Sprong's father is a renownediatrist.",
+        "matches": false
+      },
+      {
+        "key": "mc_top25",
+        "label": "MC top-25% masked",
+        "selected": [
+          5,
+          6
+        ],
+        "n_selected": 2,
+        "log_p": -6.645939826965332,
+        "prob": 0.001299286739555117,
+        "y_hat": "Jurelio Sprong's father is a renownediatrist.",
+        "matches": false
+      },
+      {
+        "key": "mc_top30",
+        "label": "MC top-30% masked",
+        "selected": [
+          5,
+          6
+        ],
+        "n_selected": 2,
+        "log_p": -6.645939826965332,
+        "prob": 0.001299286739555117,
+        "y_hat": "Jurelio Sprong's father is a renownediatrist.",
+        "matches": false
+      },
+      {
+        "key": "mc_top40",
+        "label": "MC top-40% masked",
+        "selected": [
+          5,
+          6
+        ],
+        "n_selected": 2,
+        "log_p": -6.645939826965332,
+        "prob": 0.001299286739555117,
+        "y_hat": "Jurelio Sprong's father is a renownediatrist.",
+        "matches": false
+      },
+      {
+        "key": "mc_top50",
+        "label": "MC top-50% masked",
+        "selected": [
+          3,
+          5,
+          6
+        ],
+        "n_selected": 3,
+        "log_p": -5.37537145614624,
+        "prob": 0.004629198869753697,
+        "y_hat": "The father who by the is's father is is father is..",
+        "matches": false
+      },
+      {
+        "key": "all",
+        "label": "Everything masked",
+        "selected": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ],
+        "n_selected": 8,
+        "log_p": -6.246409893035889,
+        "prob": 0.0019373971286515297,
+        "y_hat": "Yes, the of the the the in the the of the..",
+        "matches": false
+      }
+    ]
+  },
+  {
+    "question": "What are the occupations of Hsiao Yun-Hwa's parents?",
+    "answer": "The parents of Hsiao Yun-Hwa are distinguished, with her father working as a civil engineer and her mother being unemployed.",
+    "words": [
+      "What",
+      "are",
+      "the",
+      "occupations",
+      "of",
+      "Hsiao",
+      "Yun-Hwa's",
+      "parents"
+    ],
+    "importance": [
+      2.747507085048017,
+      2.6635797088817945,
+      2.8693431024006024,
+      3.4590426596502466,
+      1.2030689525333318,
+      4.303300937841295,
+      4.039589791558683,
+      4.852300695286078
+    ],
+    "heuristic_selected": [
+      5,
+      6
+    ],
+    "entry_k": {
+      "5": 20,
+      "6": 40,
+      "3": 50
+    },
+    "k_percents": [
+      10,
+      20,
+      25,
+      30,
+      40,
+      50
+    ],
+    "rows": [
+      {
+        "key": "none",
+        "label": "Nothing masked",
+        "selected": [],
+        "n_selected": 0,
+        "log_p": -0.08258681744337082,
+        "prob": 0.9207314988320443,
+        "y_hat": "The parents of Hsiao Yun-Hwa are distinguished, with her father working as a civil engineer and her mother being being.",
+        "matches": false
+      },
+      {
+        "key": "heuristic",
+        "label": "Heuristic set masked",
+        "selected": [
+          5,
+          6
+        ],
+        "n_selected": 2,
+        "log_p": -8.341493606567383,
+        "prob": 0.0002384159771987977,
+        "y_hat": "Ad.ongongumong's father is a renownediat and and her mother is a a..",
+        "matches": false
+      },
+      {
+        "key": "mc_top10",
+        "label": "MC top-10% masked",
+        "selected": [],
+        "n_selected": 0,
+        "log_p": -0.08258675783872604,
+        "prob": 0.9207315537119198,
+        "y_hat": "The parents of Hsiao Yun-Hwa are distinguished, with her father working as a civil engineer and her mother being being.",
+        "matches": false
+      },
+      {
+        "key": "mc_top20",
+        "label": "MC top-20% masked",
+        "selected": [
+          5
+        ],
+        "n_selected": 1,
+        "log_p": -0.68508380651474,
+        "prob": 0.5040479852997678,
+        "y_hat": "Thes of Yunswa Yun-Hwa are distinguished, with her father working as a civil engineer and her mother mother unemployed.",
+        "matches": false
+      },
+      {
+        "key": "mc_top25",
+        "label": "MC top-25% masked",
+        "selected": [
+          5
+        ],
+        "n_selected": 1,
+        "log_p": -0.68508380651474,
+        "prob": 0.5040479852997678,
+        "y_hat": "Thes of Yunswa Yun-Hwa are distinguished, with her father working as a civil engineer and her mother mother unemployed.",
+        "matches": false
+      },
+      {
+        "key": "mc_top30",
+        "label": "MC top-30% masked",
+        "selected": [
+          5
+        ],
+        "n_selected": 1,
+        "log_p": -0.68508380651474,
+        "prob": 0.5040479852997678,
+        "y_hat": "Thes of Yunswa Yun-Hwa are distinguished, with her father working as a civil engineer and her mother mother unemployed.",
+        "matches": false
+      },
+      {
+        "key": "mc_top40",
+        "label": "MC top-40% masked",
+        "selected": [
+          5,
+          6
+        ],
+        "n_selected": 2,
+        "log_p": -8.341492652893066,
+        "prob": 0.0002384162045701002,
+        "y_hat": "Ad.ongongumong's father is a renownediat and and her mother is a a..",
+        "matches": false
+      },
+      {
+        "key": "mc_top50",
+        "label": "MC top-50% masked",
+        "selected": [
+          3,
+          5,
+          6
+        ],
+        "n_selected": 3,
+        "log_p": -7.870023727416992,
+        "prob": 0.00038202529761896943,
+        "y_hat": "Children raised by both by by their parents often to to, and,,,, and and and and and and and and.",
+        "matches": false
+      },
+      {
+        "key": "all",
+        "label": "Everything masked",
+        "selected": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ],
+        "n_selected": 8,
+        "log_p": -7.355693817138672,
+        "prob": 0.0006389439534983699,
+        "y_hat": "Yes, the of the the the the the the of....",
+        "matches": false
+      }
+    ]
+  },
+  {
+    "question": "How has the professional background of Hsiao Yun-Hwa's father in civil engineering influenced her works in leadership genre?",
+    "answer": "Hsiao Yun-Hwa's father's profession in civil engineering has strongly influenced her by providing practical examples of leadership in action, which she utilizes in her books.",
+    "words": [
+      "How",
+      "has",
+      "the",
+      "professional",
+      "background",
+      "of",
+      "Hsiao",
+      "Yun-Hwa's",
+      "father",
+      "in",
+      "civil",
+      "engineering",
+      "influenced",
+      "her",
+      "works",
+      "in",
+      "leadership",
+      "genre"
+    ],
+    "importance": [
+      0.9597833749084246,
+      2.2861917854441325,
+      1.8678363676749021,
+      2.9851476876065135,
+      3.407914118752593,
+      2.0122679796288994,
+      3.68301055273589,
+      3.216666198068974,
+      2.5735295643409093,
+      3.513489953463986,
+      2.5085815345106823,
+      3.735161575488746,
+      3.66836033489496,
+      4.160650173998346,
+      3.3195210499688983,
+      2.641987088906999,
+      3.7520281085480565,
+      2.792629349290156
+    ],
+    "heuristic_selected": [
+      6,
+      7
+    ],
+    "entry_k": {
+      "16": 10,
+      "11": 20,
+      "6": 20,
+      "12": 30,
+      "4": 40,
+      "7": 50
+    },
+    "k_percents": [
+      10,
+      20,
+      25,
+      30,
+      40,
+      50
+    ],
+    "rows": [
+      {
+        "key": "none",
+        "label": "Nothing masked",
+        "selected": [],
+        "n_selected": 0,
+        "log_p": -0.21119898557662964,
+        "prob": 0.8096129495521821,
+        "y_hat": "Hsiao Yun-Hwa's father's profession in civil engineering has strongly influenced her by providing practical examples of action action action, she she utilizes in her books.",
+        "matches": false
+      },
+      {
+        "key": "heuristic",
+        "label": "Heuristic set masked",
+        "selected": [
+          6,
+          7
+        ],
+        "n_selected": 2,
+        "log_p": -3.8293228149414062,
+        "prob": 0.0217243220360982,
+        "y_hat": "Aleem Sketrke's father in civil engineering has has influenced her by providing examples examples of in in,, which she she utilizes in her books.",
+        "matches": false
+      },
+      {
+        "key": "mc_top10",
+        "label": "MC top-10% masked",
+        "selected": [
+          16
+        ],
+        "n_selected": 1,
+        "log_p": -0.5216351747512817,
+        "prob": 0.5935491973614632,
+        "y_hat": "Hsiao Yun-Hwa's father's profession in civil engineering has strongly influenced her by providing a practical of of action,, she she in in her books.",
+        "matches": false
+      },
+      {
+        "key": "mc_top20",
+        "label": "MC top-20% masked",
+        "selected": [
+          6,
+          11,
+          16
+        ],
+        "n_selected": 3,
+        "log_p": -3.301882028579712,
+        "prob": 0.03681381750579315,
+        "y_hat": "Thesiao Yun-Hwa's father's civil engineering has engineering strongly influenced her by by practical of of of and, which she she utilizes in her books.",
+        "matches": false
+      },
+      {
+        "key": "mc_top25",
+        "label": "MC top-25% masked",
+        "selected": [
+          6,
+          11,
+          16
+        ],
+        "n_selected": 3,
+        "log_p": -3.301882028579712,
+        "prob": 0.03681381750579315,
+        "y_hat": "Thesiao Yun-Hwa's father's civil engineering has engineering strongly influenced her by by practical of of of and, which she she utilizes in her books.",
+        "matches": false
+      },
+      {
+        "key": "mc_top30",
+        "label": "MC top-30% masked",
+        "selected": [
+          6,
+          11,
+          12,
+          16
+        ],
+        "n_selected": 4,
+        "log_p": -3.4757959842681885,
+        "prob": 0.03093719849650633,
+        "y_hat": "Thesiao Yun-Hwa's father's profession engineering has has strongly influenced her by by of of of of,,, which are in in her books.",
+        "matches": false
+      },
+      {
+        "key": "mc_top40",
+        "label": "MC top-40% masked",
+        "selected": [
+          4,
+          6,
+          11,
+          12,
+          16
+        ],
+        "n_selected": 5,
+        "log_p": -2.8326070308685303,
+        "prob": 0.05885920570780474,
+        "y_hat": "The exposure Yun Yun-Hwa's father's civil civil civil has strongly her her understanding and of to to,,, she she she in in her books.",
+        "matches": false
+      },
+      {
+        "key": "mc_top50",
+        "label": "MC top-50% masked",
+        "selected": [
+          4,
+          6,
+          7,
+          11,
+          12,
+          16
+        ],
+        "n_selected": 6,
+        "log_p": -5.043023109436035,
+        "prob": 0.006454207021284186,
+        "y_hat": "The mother's of mother and's mother's in influenced has has influenced her her. and and and and and,,, are her her in her her.",
+        "matches": false
+      },
+      {
+        "key": "all",
+        "label": "Everything masked",
+        "selected": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15,
+          16,
+          17
+        ],
+        "n_selected": 18,
+        "log_p": -7.597003936767578,
+        "prob": 0.000501953065949659,
+        "y_hat": "Yes's the to the the the a..............",
+        "matches": false
+      }
+    ]
+  },
+  {
+    "question": "Can you name an example of Hsiao Yun-Hwa's work that is influenced by her life experiences?",
+    "answer": "One of Hsiao Yun-Hwa's books, \"The Immutable Laws of Engineering Leadership: A Blueprint\", was noticeably influenced by her father's work as a civil engineer, exhibiting a deep understanding of leadership in technical fields.",
+    "words": [
+      "Can",
+      "you",
+      "name",
+      "an",
+      "example",
+      "of",
+      "Hsiao",
+      "Yun-Hwa's",
+      "work",
+      "that",
+      "is",
+      "influenced",
+      "by",
+      "her",
+      "life",
+      "experiences"
+    ],
+    "importance": [
+      2.1640027139395004,
+      2.39154909402132,
+      3.2896201057761325,
+      0.5127698838228159,
+      3.1411024429022314,
+      0.5538047924637794,
+      5.166362077494462,
+      4.532112183407241,
+      0.7009269077403872,
+      2.442639608468328,
+      2.0718119628727436,
+      3.2800020246751727,
+      3.6646215784163614,
+      1.8221750924400255,
+      1.7744460552930832,
+      3.130953315776937
+    ],
+    "heuristic_selected": [
+      6,
+      7
+    ],
+    "entry_k": {
+      "6": 10,
+      "7": 10,
+      "11": 30,
+      "4": 40,
+      "15": 50
+    },
+    "k_percents": [
+      10,
+      20,
+      25,
+      30,
+      40,
+      50
+    ],
+    "rows": [
+      {
+        "key": "none",
+        "label": "Nothing masked",
+        "selected": [],
+        "n_selected": 0,
+        "log_p": -0.12871494889259338,
+        "prob": 0.879224553761371,
+        "y_hat": "One of Hsiao Yun-Hwa's books, \"The Immutable Laws of of Leadership: A Blueprint\", was was influenced by her father's work as a civil engineer, exhibiting a a understanding of leadership in technical fields.",
+        "matches": false
+      },
+      {
+        "key": "heuristic",
+        "label": "Heuristic set masked",
+        "selected": [
+          6,
+          7
+        ],
+        "n_selected": 2,
+        "log_p": -7.6823039054870605,
+        "prob": 0.00046091177741329313,
+        "y_hat": "One of Semugas's \", \" \" \" \" the the\",\",\", her her her her her a a in in in a a and and and with",
+        "matches": false
+      },
+      {
+        "key": "mc_top10",
+        "label": "MC top-10% masked",
+        "selected": [
+          6,
+          7
+        ],
+        "n_selected": 2,
+        "log_p": -7.6823039054870605,
+        "prob": 0.00046091177741329313,
+        "y_hat": "One of Semugas's \", \" \" \" \" the the\",\",\", her her her her her a a in in in a a and and and with",
+        "matches": false
+      },
+      {
+        "key": "mc_top20",
+        "label": "MC top-20% masked",
+        "selected": [
+          6,
+          7
+        ],
+        "n_selected": 2,
+        "log_p": -7.6823039054870605,
+        "prob": 0.00046091177741329313,
+        "y_hat": "One of Semugas's \", \" \" \" \" the the\",\",\", her her her her her a a in in in a a and and and with",
+        "matches": false
+      },
+      {
+        "key": "mc_top25",
+        "label": "MC top-25% masked",
+        "selected": [
+          6,
+          7
+        ],
+        "n_selected": 2,
+        "log_p": -7.6823039054870605,
+        "prob": 0.00046091177741329313,
+        "y_hat": "One of Semugas's \", \" \" \" \" the the\",\",\", her her her her her a a in in in a a and and and with",
+        "matches": false
+      },
+      {
+        "key": "mc_top30",
+        "label": "MC top-30% masked",
+        "selected": [
+          6,
+          7,
+          11
+        ],
+        "n_selected": 3,
+        "log_p": -7.721761703491211,
+        "prob": 0.00044307934150577394,
+        "y_hat": "One of J.emas's \",, \" \" \" of\",\", is influenced by her her her as a a in in a in, a of of her",
+        "matches": false
+      },
+      {
+        "key": "mc_top40",
+        "label": "MC top-40% masked",
+        "selected": [
+          4,
+          6,
+          7,
+          11
+        ],
+        "n_selected": 4,
+        "log_p": -7.4614763259887695,
+        "prob": 0.0005748069423444848,
+        "y_hat": "One of Sal Suas's works, \" \"The the the\",\",\",\", by by her her her a a a in a in in a",
+        "matches": false
+      },
+      {
+        "key": "mc_top50",
+        "label": "MC top-50% masked",
+        "selected": [
+          4,
+          6,
+          7,
+          11,
+          15
+        ],
+        "n_selected": 5,
+        "log_p": -6.147562026977539,
+        "prob": 0.0021386894865937783,
+        "y_hat": "One of S. Vas's work's \",, \" the of of is is\", by her her her her her a a a in in in in.",
+        "matches": false
+      },
+      {
+        "key": "all",
+        "label": "Everything masked",
+        "selected": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15
+        ],
+        "n_selected": 16,
+        "log_p": -8.38419246673584,
+        "prob": 0.0002284501652194754,
+        "y_hat": "While's the to a a the a a...............",
+        "matches": false
+      }
+    ]
+  },
+  {
+    "question": "How has Hsiao Yun-Hwa's identity as a member of the LGBTQ+ community influenced her work?",
+    "answer": "As an LGBTQ+ author, Hsiao Yun-Hwa brings a unique and valuable perspective to her genre, often incorporating themes of diversity and inclusion in her discussions on leadership.",
+    "words": [
+      "How",
+      "has",
+      "Hsiao",
+      "Yun-Hwa's",
+      "identity",
+      "as",
+      "a",
+      "member",
+      "of",
+      "the",
+      "LGBTQ",
+      "community",
+      "influenced",
+      "her",
+      "work"
+    ],
+    "importance": [
+      4.73427643859759,
+      2.8586825439450787,
+      4.721856819020832,
+      4.4845550289998455,
+      3.519177236422604,
+      3.604840996072573,
+      3.3217902937904,
+      3.6557763504923555,
+      4.773263185160604,
+      1.4513525216310632,
+      3.9617337482524855,
+      2.715898040918604,
+      3.612741961520092,
+      3.7541739301646455,
+      2.5406431235101543
+    ],
+    "heuristic_selected": [
+      2,
+      3,
+      10
+    ],
+    "entry_k": {
+      "2": 20,
+      "3": 25,
+      "10": 40,
+      "7": 50,
+      "12": 50
+    },
+    "k_percents": [
+      10,
+      20,
+      25,
+      30,
+      40,
+      50
+    ],
+    "rows": [
+      {
+        "key": "none",
+        "label": "Nothing masked",
+        "selected": [],
+        "n_selected": 0,
+        "log_p": -0.12465015798807144,
+        "prob": 0.8828056910869624,
+        "y_hat": "As an LGBTQ+ author, Hsiao Yun-Hwa brings a unique and valuable perspective her her genre often often incorporating themes of diversity and inclusion in her discussions on leadership.",
+        "matches": false
+      },
+      {
+        "key": "heuristic",
+        "label": "Heuristic set masked",
+        "selected": [
+          2,
+          3,
+          10
+        ],
+        "n_selected": 3,
+        "log_p": -4.485605239868164,
+        "prob": 0.011270064363855779,
+        "y_hat": "As an LGBTQ+ author, Evale Suou\u00e1n often includes her and and characters and and and,, her and and and and and her and..",
+        "matches": false
+      },
+      {
+        "key": "mc_top10",
+        "label": "MC top-10% masked",
+        "selected": [],
+        "n_selected": 0,
+        "log_p": -0.12465015798807144,
+        "prob": 0.8828056910869624,
+        "y_hat": "As an LGBTQ+ author, Hsiao Yun-Hwa brings a unique and valuable perspective her her genre often often incorporating themes of diversity and inclusion in her discussions on leadership.",
+        "matches": false
+      },
+      {
+        "key": "mc_top20",
+        "label": "MC top-20% masked",
+        "selected": [
+          2
+        ],
+        "n_selected": 1,
+        "log_p": -0.4006965756416321,
+        "prob": 0.6698532800072696,
+        "y_hat": "As an LGBTQ+ author, Tsiao Yun-Hwa brings a unique and and perspective to her genre, often incorporating themes of diversity and inclusion in her on on leadership.",
+        "matches": false
+      },
+      {
+        "key": "mc_top25",
+        "label": "MC top-25% masked",
+        "selected": [
+          2,
+          3
+        ],
+        "n_selected": 2,
+        "log_p": -4.338794231414795,
+        "prob": 0.013052256720175655,
+        "y_hat": "As an LGBTQ+ author, Evalealou\u00e1nza often characters and her characters and and and,,, and and and and and her and and and.",
+        "matches": false
+      },
+      {
+        "key": "mc_top30",
+        "label": "MC top-30% masked",
+        "selected": [
+          2,
+          3
+        ],
+        "n_selected": 2,
+        "log_p": -4.338794231414795,
+        "prob": 0.013052256720175655,
+        "y_hat": "As an LGBTQ+ author, Evalealou\u00e1nza often characters and her characters and and and,,, and and and and and her and and and.",
+        "matches": false
+      },
+      {
+        "key": "mc_top40",
+        "label": "MC top-40% masked",
+        "selected": [
+          2,
+          3,
+          10
+        ],
+        "n_selected": 3,
+        "log_p": -4.485605239868164,
+        "prob": 0.011270064363855779,
+        "y_hat": "As an LGBTQ+ author, Evale Suou\u00e1n often includes her and and characters and and and,, her and and and and and her and..",
+        "matches": false
+      },
+      {
+        "key": "mc_top50",
+        "label": "MC top-50% masked",
+        "selected": [
+          2,
+          3,
+          7,
+          10,
+          12
+        ],
+        "n_selected": 5,
+        "log_p": -7.51502799987793,
+        "prob": 0.000544834761120092,
+        "y_hat": "Finaeline+quez often includes characters as an member of the author,+ characters, characters characters and and and and and of within her her within.",
+        "matches": false
+      },
+      {
+        "key": "all",
+        "label": "Everything masked",
+        "selected": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14
+        ],
+        "n_selected": 15,
+        "log_p": -9.30941390991211,
+        "prob": 9.056761040233102e-05,
+        "y_hat": "The, of the of the2x22$222+2+1$ is  is",
+        "matches": false
+      }
+    ]
+  },
+  {
+    "question": "Can you share the title of one of Hsiao Yun-Hwa's most popular books?",
+    "answer": "One of Hsiao Yun-Hwa's most popular books in the leadership genre is \"Artistic Authority: Leading with Creativity\".",
+    "words": [
+      "Can",
+      "you",
+      "share",
+      "the",
+      "title",
+      "of",
+      "one",
+      "of",
+      "Hsiao",
+      "Yun-Hwa's",
+      "most",
+      "popular",
+      "books"
+    ],
+    "importance": [
+      3.0594401588203457,
+      3.6845919908955693,
+      3.454702350745599,
+      4.345794475637376,
+      2.707763720954221,
+      2.737678506411612,
+      2.6889156369226317,
+      1.20634972974658,
+      4.847731058677984,
+      5.2944512101511165,
+      3.4151777677237987,
+      2.9553333474323153,
+      4.347581348184383
+    ],
+    "heuristic_selected": [
+      8,
+      9
+    ],
+    "entry_k": {
+      "9": 10,
+      "8": 20,
+      "2": 50
+    },
+    "k_percents": [
+      10,
+      20,
+      25,
+      30,
+      40,
+      50
+    ],
+    "rows": [
+      {
+        "key": "none",
+        "label": "Nothing masked",
+        "selected": [],
+        "n_selected": 0,
+        "log_p": -0.13648435473442078,
+        "prob": 0.8724199693949675,
+        "y_hat": "One of Hsiao Yun-Hwa's most popular books in the leadership genre is \"Artistic Authority: Leading with with\".",
+        "matches": false
+      },
+      {
+        "key": "heuristic",
+        "label": "Heuristic set masked",
+        "selected": [
+          8,
+          9
+        ],
+        "n_selected": 2,
+        "log_p": -6.832208633422852,
+        "prob": 0.001078473532545894,
+        "y_hat": "One of E of Th\u00f8eara's most popular books is theThe acclaimed the the Dawn\".",
+        "matches": false
+      },
+      {
+        "key": "mc_top10",
+        "label": "MC top-10% masked",
+        "selected": [
+          9
+        ],
+        "n_selected": 1,
+        "log_p": -0.5839759707450867,
+        "prob": 0.5576766467130929,
+        "y_hat": "One of Hsiao Hswa's most popular books in the leadership genre is \"Artistic Authority: Leading with with Creativity\".",
+        "matches": false
+      },
+      {
+        "key": "mc_top20",
+        "label": "MC top-20% masked",
+        "selected": [
+          8,
+          9
+        ],
+        "n_selected": 2,
+        "log_p": -6.832208633422852,
+        "prob": 0.001078473532545894,
+        "y_hat": "One of E of Th\u00f8eara's most popular books is theThe acclaimed the the Dawn\".",
+        "matches": false
+      },
+      {
+        "key": "mc_top25",
+        "label": "MC top-25% masked",
+        "selected": [
+          8,
+          9
+        ],
+        "n_selected": 2,
+        "log_p": -6.832208633422852,
+        "prob": 0.001078473532545894,
+        "y_hat": "One of E of Th\u00f8eara's most popular books is theThe acclaimed the the Dawn\".",
+        "matches": false
+      },
+      {
+        "key": "mc_top30",
+        "label": "MC top-30% masked",
+        "selected": [
+          8,
+          9
+        ],
+        "n_selected": 2,
+        "log_p": -6.832208633422852,
+        "prob": 0.001078473532545894,
+        "y_hat": "One of E of Th\u00f8eara's most popular books is theThe acclaimed the the Dawn\".",
+        "matches": false
+      },
+      {
+        "key": "mc_top40",
+        "label": "MC top-40% masked",
+        "selected": [
+          8,
+          9
+        ],
+        "n_selected": 2,
+        "log_p": -6.832208633422852,
+        "prob": 0.001078473532545894,
+        "y_hat": "One of E of Th\u00f8eara's most popular books is theThe acclaimed the the Dawn\".",
+        "matches": false
+      },
+      {
+        "key": "mc_top50",
+        "label": "MC top-50% masked",
+        "selected": [
+          2,
+          8,
+          9
+        ],
+        "n_selected": 3,
+        "log_p": -8.229413032531738,
+        "prob": 0.0002666928243315599,
+        "y_hat": "One of Eurelio\u00f8 Suert's most popular books is \"Theinds the the City\".",
+        "matches": false
+      },
+      {
+        "key": "all",
+        "label": "Everything masked",
+        "selected": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12
+        ],
+        "n_selected": 13,
+        "log_p": -7.9335408210754395,
+        "prob": 0.00035851472635287774,
+        "y_hat": "Yes's the to the the the the...........",
+        "matches": false
+      }
+    ]
+  }
+]

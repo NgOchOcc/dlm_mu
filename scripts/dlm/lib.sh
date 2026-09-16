@@ -125,10 +125,10 @@ tofu_split() {
 
 DEFAULT_METHODS=(
     DiffusionGA
-    DiffusionGradDiff
     DiffusionNPO
     DiffusionSimNPO
     DiffusionWGA
+    DiffusionBST
 )
 
 parse_methods() {
@@ -157,6 +157,7 @@ method_setup() {
         DiffusionRDU)       EXP=unlearn/tofu/dlm_repel_gendistill ;;
         DiffusionADU)       EXP=unlearn/tofu/dlm_adu ;;
         DiffusionBST)       EXP=unlearn/tofu/dlm_bst ;;
+        DiffusionSDU)       EXP=unlearn/tofu/dlm_sdu ;;
         *)                  EXP=unlearn/tofu/dlm ;;
     esac
     [[ -n "$EXP_OVERRIDE" ]] && EXP="$EXP_OVERRIDE"
