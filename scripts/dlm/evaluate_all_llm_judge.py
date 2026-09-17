@@ -38,7 +38,7 @@ linguistic_prompt = JUDGE_API.linguistic_prompt
 parse_linguistic = JUDGE_API.parse_linguistic
 query_judge_many = JUDGE_API.query_judge_many
 
-DEFAULT_EVAL_ROOT = ROOT / "saves/eval"
+DEFAULT_EVAL_ROOT = ROOT / "saves/ablation"
 SUMMARY_NAME = "TOFU_SUMMARY.json"
 EVAL_NAME = "TOFU_EVAL.json"
 COMPLETE_MARKER = "LLM_JUDGE_COMPLETE.json"

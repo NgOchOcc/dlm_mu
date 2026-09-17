@@ -1,6 +1,14 @@
 export NCCL_NVLS_ENABLE=0
 export NCCL_IB_DISABLE=1
 
+# $HOME is NFS-mounted on this cluster; concurrent multi-process launches
+# hammering the Triton/Inductor autotune cache there causes DeepSpeed imports
+# to stall or hang on exit. Redirect to local (non-NFS) disk unless the caller
+# already set these.
+export TRITON_CACHE_DIR="${TRITON_CACHE_DIR:-/tmp/${USER}/triton_cache}"
+export TORCHINDUCTOR_CACHE_DIR="${TORCHINDUCTOR_CACHE_DIR:-/tmp/${USER}/inductor_cache}"
+mkdir -p "$TRITON_CACHE_DIR" "$TORCHINDUCTOR_CACHE_DIR"
+
 die() { echo "error: $*" >&2; exit 1; }
 flag_on() {
     case "${1:-}" in
@@ -151,15 +159,20 @@ parse_methods() {
 method_setup() {
     local method=$1
     METHOD_ARGS=()
+    # RETAIN_ALREADY_NULL=1 marks experiment configs that already set
+    # `data.retain` to null in their own defaults (forget-only by design) -
+    # for these, unlearn.sh's automatic `~data.retain` delete override would
+    # hit a key that's already absent and Hydra errors ("does not exist").
+    RETAIN_ALREADY_NULL=0
     case "$method" in
         DiffusionGD)
             [[ -n "${GRADDIFF_LR:-}" ]] && METHOD_ARGS=(trainer.args.learning_rate="${GRADDIFF_LR}")
             EXP=unlearn/tofu/dlm
             ;;
         DiffusionMDU)       EXP=unlearn/tofu/dlm_mdu ;;
-        DiffusionBST)       EXP=unlearn/tofu/dlm_bst ;;
-        DiffusionSDU)       EXP=unlearn/tofu/dlm_sdu ;;
-        DiffusionSelectiveUnlearning) EXP=unlearn/tofu/dlm_selective_unlearning ;;
+        DiffusionBST)       EXP=unlearn/tofu/dlm_bst ; RETAIN_ALREADY_NULL=1 ;;
+        DiffusionSDU)       EXP=unlearn/tofu/dlm_sdu ; RETAIN_ALREADY_NULL=1 ;;
+        DiffusionSelectiveUnlearning) EXP=unlearn/tofu/dlm_selective_unlearning ; RETAIN_ALREADY_NULL=1 ;;
         *)                  EXP=unlearn/tofu/dlm ;;
     esac
     [[ -n "$EXP_OVERRIDE" ]] && EXP="$EXP_OVERRIDE"

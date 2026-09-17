@@ -6,7 +6,7 @@ import re
 import sys
 from pathlib import Path
 
-DEFAULT_EVAL_DIR = Path("saves/eval")
+DEFAULT_EVAL_DIR = Path("saves/ablation")
 ERASING_KNOWLEDGE_COMPONENTS = {
     "forget_Q_A_Prob": "lower",
     "forget_Q_A_ROUGE": "lower",

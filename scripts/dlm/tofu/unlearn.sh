@@ -32,7 +32,9 @@ for index in "${!splits[@]}"; do
 
         method_setup "$method"
         extra_args=("$@")
-        flag_on "${FORGET_ONLY:-1}" && extra_args+=("~data.retain")
+        if flag_on "${FORGET_ONLY:-1}" && ! flag_on "${RETAIN_ALREADY_NULL:-0}"; then
+            extra_args+=("~data.retain")
+        fi
         tofu_unlearn "$method" "$task" "$FORGET" "$RETAIN" "$HOLDOUT" "$epochs" \
             "${METHOD_ARGS[@]}" "paths.output_dir=${OUTPUT_ROOT}/unlearn/${task}" "${extra_args[@]}"
         flag_on "${NO_EVAL:-}" || tofu_eval \
