@@ -1,0 +1,8 @@
+WMDP_MCQ_cyber:
+  handler: WMDPMCQDataset
+  args:
+    hf_args:
+      path: "cais/wmdp"
+      name: "wmdp-cyber"
+      split: "test"
+    max_length: 512

@@ -1,0 +1,10 @@
+# @package eval.wmdp_dlm.metrics.mcq_accuracy_bio
+defaults:
+  - .@pre_compute.mcq_prob_bio: mcq_prob_bio
+  - ../../data/datasets@datasets: WMDP_MCQ_bio
+
+pre_compute:
+  mcq_prob_bio:
+    access_key: mcq_prob
+
+handler: mcq_accuracy_diffusion

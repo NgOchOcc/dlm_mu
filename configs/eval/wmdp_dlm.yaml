@@ -1,0 +1,24 @@
+# @package eval.wmdp_dlm
+# Masked-diffusion (Dream, LLaDA) counterpart of the lm-eval wmdp_{bio,chem,cyber}
+# tasks. lm-evaluation-harness's HFLM wrapper only supports autoregressive
+# causal-LM forward passes, so DLM models can't use `eval=lm_eval` directly.
+# This instead reads the same cais/wmdp MCQ data (question + 4 choices +
+# correct index) and scores each option the same way as the repo's own DLM
+# metrics: mask the single answer-letter token ("A".."D") after a
+# "question\nA. ...\nB. ...\nC. ...\nD. ...\nAnswer:" prompt and compare
+# per-letter masked-diffusion reconstruction loss (mcq_accuracy_diffusion).
+defaults:
+  - wmdp_dlm_metrics:
+    - mcq_accuracy_cyber
+    - mcq_accuracy_bio
+    - mcq_accuracy_chem
+
+handler: WMDPEvaluator
+output_dir: ${paths.output_dir}
+metrics: {}
+overwrite: false
+batch_size: 8
+
+scheduler_name: LinearAlphaScheduler
+time_epsilon: 1e-3
+right_shift_logits: False  # set True for Dream

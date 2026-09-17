@@ -1,0 +1,8 @@
+WMDP_MCQ_chem:
+  handler: WMDPMCQDataset
+  args:
+    hf_args:
+      path: "cais/wmdp"
+      name: "wmdp-chem"
+      split: "test"
+    max_length: 512

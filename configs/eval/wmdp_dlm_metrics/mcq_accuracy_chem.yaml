@@ -1,0 +1,10 @@
+# @package eval.wmdp_dlm.metrics.mcq_accuracy_chem
+defaults:
+  - .@pre_compute.mcq_prob_chem: mcq_prob_chem
+  - ../../data/datasets@datasets: WMDP_MCQ_chem
+
+pre_compute:
+  mcq_prob_chem:
+    access_key: mcq_prob
+
+handler: mcq_accuracy_diffusion

@@ -52,6 +52,31 @@ def probability_diffusion(model, **kwargs):
     return {"agg_value": np.mean(prob_values), "value_by_index": scores_by_index}
 
 
+@unlearning_metric(name="mcq_accuracy_diffusion")
+def mcq_accuracy_diffusion(model, **kwargs):
+    """4-way MCQ accuracy from per-option masked-diffusion answer loss.
+
+    Consumes the ``{idx: {"avg_loss": [loss_A, loss_B, loss_C, loss_D]}}``
+    payload of a ``probability_diffusion`` pre_compute run over a
+    ``WMDPMCQDataset`` (whose 4 intra-item answers are the single letters
+    "A".."D"); the predicted option is the lowest-loss (highest-likelihood)
+    letter, compared against the dataset's own correct-answer index.
+    """
+    data = kwargs["data"]
+    value_by_index = kwargs["pre_compute"]["mcq_prob"]["value_by_index"]
+
+    correct = []
+    for idx, entry in value_by_index.items():
+        losses = entry["avg_loss"]
+        if losses is None or any(loss is None for loss in losses):
+            continue
+        predicted = int(np.argmin(losses))
+        correct.append(1.0 if predicted == data.correct_index(int(idx)) else 0.0)
+
+    agg_value = float(np.mean(correct)) if correct else None
+    return {"agg_value": agg_value, "value_by_index": {"n_correct": sum(correct), "n_total": len(correct)}}
+
+
 @unlearning_metric(name="rouge_diffusion")
 def rouge_diffusion(model, **kwargs):
     """ROUGE against iterative-denoising generations."""

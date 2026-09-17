@@ -1,0 +1,10 @@
+# @package eval.wmdp_dlm.metrics.mcq_prob_cyber
+defaults:
+  - ../../data/datasets@datasets: WMDP_MCQ_cyber
+  - ../../collator@collators: DataCollatorForSupervisedDatasetwithIndex
+
+handler: probability_diffusion
+batch_size: ${eval.wmdp_dlm.batch_size}
+mc_num: 1
+time_epsilon: ${eval.wmdp_dlm.time_epsilon}
+right_shift_logits: ${eval.wmdp_dlm.right_shift_logits}

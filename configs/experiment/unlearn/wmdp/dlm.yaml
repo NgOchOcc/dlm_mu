@@ -5,7 +5,7 @@ defaults:
   - override /data: unlearn
   - override /data/datasets@data.forget: WMDP_forget
   - override /data/datasets@data.retain: WMDP_retain
-  - override /eval: null
+  - override /eval: wmdp_dlm
 
 data_split: cyber
 
@@ -23,6 +23,10 @@ data:
         hf_args:
           data_files: data/wmdp/wmdp-corpora/${data_split}-retain-corpus.jsonl
         max_length: 512
+
+eval:
+  wmdp_dlm:
+    overwrite: true
 
 trainer:
   args:

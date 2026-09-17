@@ -1,0 +1,11 @@
+# @package eval.wmdp_dlm.metrics.mcq_accuracy_cyber
+defaults:
+  - .@pre_compute.mcq_prob_cyber: mcq_prob_cyber
+  - ../../data/datasets@datasets: WMDP_MCQ_cyber
+
+pre_compute:
+  mcq_prob_cyber:
+    access_key: mcq_prob
+
+handler: mcq_accuracy_diffusion
+

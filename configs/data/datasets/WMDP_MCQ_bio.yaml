@@ -1,0 +1,8 @@
+WMDP_MCQ_bio:
+  handler: WMDPMCQDataset
+  args:
+    hf_args:
+      path: "cais/wmdp"
+      name: "wmdp-bio"
+      split: "test"
+    max_length: 512
