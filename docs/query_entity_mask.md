@@ -1,44 +1,50 @@
-# Offline Monte Carlo Query-Entity Masking for SDU
+# Offline Monte Carlo Query-Entity Masking
 
-`DiffusionSDU` replaces the query-side surface heuristic used by
-`DiffusionSelectiveUnlearning` with an offline, model-based estimate of which
-query words help the frozen model recover the memorized answer. The selected
-words are cached once and converted back into token positions during training
-by [`query_entity_mask`](../src/trainer/dlm/unlearn/sdu.py).
+This module automatically chooses which query words to hide during Selective
+Unlearning. It is a preprocessing pipeline, not a new unlearning loss:
 
-The preprocessor asks a simple question: **which query words help the frozen
-model reconstruct the memorized answer?** It masks random query-word subsets,
-measures the change in true-answer likelihood, and caches the most influential
-words. During ADU training, the cached mask is reconstructed at token level and
-used wherever ADU would otherwise apply its hand-written query mask.
+```text
+forget examples + frozen checkpoint
+                |
+                v
+      offline Monte Carlo scoring
+                |
+                v
+       cached query-word masks
+                |
+                v
+ DiffusionSelectiveUnlearning training
+```
 
-Part I defines this preprocessing method. Part II documents the current
-repository implementation. Some implementation symbols still use the legacy
-`SDU` name; those names refer to the cache generator and runtime adapter, not
-to a distinct theoretical unlearning method.
+The repository calls the runtime adapter `DiffusionSDU`. That adapter keeps the
+Selective Unlearning objective and replaces its rule-based query mask with the
+cached mask. The current code does not connect this pipeline to a
+`DiffusionADU` trainer.
+
+The central question is: **which words in the query help the frozen model
+recover the memorized answer?** Words whose visibility improves answer recovery
+receive higher importance and are more likely to be masked during training.
 
 ---
 
 # Part I: Theory
 
-## 1. Purpose
+## 1. Goal and output
 
-For a forget example $(x,y)$, let $x$ be the query, $y$ the ground-truth
-answer, and $p_{\theta_0}$ the frozen base model. ADU normally removes identity
-information from $x$ with a surface rule based on capitalization, digits, and
-lexical overlap. The offline preprocessor replaces that rule with a model-based
-mask
+For one forget example, let $x$ be the query, $y=(y_1,\ldots,y_m)$ the true
+answer, and $p_{\theta_0}$ the frozen checkpoint. The preprocessor returns a set
+of query token positions
 
 $$
-\mathcal I_x^{\mathrm{auto}}(x,y),
+\mathcal I_x^{\mathrm{MC}}(x,y).
 $$
 
-containing query positions whose visibility helps $p_{\theta_0}$ recover $y$.
-The mask depends on the example, checkpoint, tokenizer, chat template, Monte
-Carlo seed, and selection percentage. It is computed once before training and
-does not introduce an additional ADU loss.
+These are the positions that will be hidden from the counterfactual teacher.
+Unlike the original capitalization-and-digit rule, this mask depends on both
+the query and answer and on the behavior of $p_{\theta_0}$. It is computed once
+and cached before training.
 
-## 2. Query-word units
+## 2. Candidate words
 
 Let
 
@@ -46,20 +52,26 @@ $$
 W(x)=(w_1,\ldots,w_n)
 $$
 
-be the ordered query-word list, and let $P_i$ contain the token positions of
-word $w_i$. Adjacent tokenizer pieces are grouped at whitespace boundaries;
-punctuation-only pieces, control syntax, and bare chat-role names are removed.
-A split word therefore receives one score and is masked as one unit.
+be the ordered query-word list. Let $P_i$ be the token positions belonging to
+word $w_i$.
 
-Stop and function words remain in the Monte Carlo population. They are filtered
-only after ranking.
+The implementation approximates words by grouping decoded tokenizer pieces at
+whitespace boundaries. It removes punctuation-only pieces, chat-template
+syntax, and bare role names such as `user` and `assistant`. A word split across
+several tokens receives one importance score, and all its tokens are masked
+together.
 
-## 3. Occlusion score
+All query words, including stop words, participate in Monte Carlo scoring.
 
-Let $A$ be the answer-token positions. For a query-word subset
-$S\subseteq\{1,\ldots,n\}$, construct $z(S)$ by masking every answer token and
-every query token in $\bigcup_{i\in S}P_i$. All other query tokens remain
-visible.
+## 3. Scoring one masked query
+
+Let $A$ be the answer-token positions and let
+$S\subseteq\{1,\ldots,n\}$ be a set of query words to hide. The occluded input
+$z(S)$ is constructed by:
+
+1. masking every answer position in $A$;
+2. masking every query position in $\bigcup_{i\in S}P_i$; and
+3. leaving all other query words visible.
 
 The coalition score is the mean log-probability of the true masked answer:
 
@@ -68,21 +80,22 @@ L(S)=\frac{1}{|A|}\sum_{j\in A}
 \log p_{\theta_0}^{j}\!\left(y_j\mid z(S)\right).
 $$
 
-A high score means that the visible query still provides enough evidence to
-recover the answer. Fully masking the answer isolates query-to-answer leakage
-from direct visibility of answer tokens.
+A larger $L(S)$ means that the visible part of the query still lets the model
+recover the answer. The answer is fully masked so that it cannot reveal itself
+to the model.
 
-## 4. Monte Carlo importance
+## 4. Estimating each word's importance
 
 For each trial $r=1,\ldots,R$, sample
 
 $$
 \rho_r\sim\mathcal U(0,1),
 \qquad
-\mathbf 1[i\in S_r]\sim\operatorname{Bernoulli}(\rho_r),
+\mathbf 1[i\in S_r]\sim\operatorname{Bernoulli}(\rho_r).
 $$
 
-and evaluate $L(S_r)$. The estimated importance of word $w_i$ is
+The sampled set $S_r$ is scored with $L(S_r)$. For each word, trials are split
+according to whether that word was visible or masked:
 
 $$
 \widehat a_i=
@@ -91,17 +104,42 @@ $$
 \operatorname{mean}_{r:\,i\in S_r}L(S_r).
 $$
 
-A positive value means that the answer is easier to recover when the word is
-visible. Such a word is a candidate for ADU's automatic query mask. Negative
-values are retained for ranking; if either comparison group is empty, the
-implementation assigns zero importance.
+A positive $\widehat a_i$ means that answer recovery was better when $w_i$ was
+visible. The word therefore carries evidence about the answer. A value near
+zero means that the sampled trials found little dependence on the word. The
+implementation retains negative values and assigns zero when one comparison
+group is empty.
 
-This is an occlusion estimator, not an exact Shapley value. Because all words
-share the trial-specific $\rho_r$, a word's masked state is correlated with the
-number of other masked words. The score can therefore include coalition-size
-and word-interaction effects.
+This quantity is an occlusion importance estimate, not an exact Shapley value.
+All words share the same trial-specific $\rho_r$, so a word is more likely to be
+masked in trials where many other words are also masked. Its score can therefore
+include coalition-size and interaction effects.
 
-## 5. Selection and cleanup
+For example, if hiding `Hsiao Yun-Hwa` sharply lowers the probability of the
+true answer while hiding `what` has little effect, the name receives a larger
+importance score than the question word.
+
+## 5. Entity calibration and final selection
+
+The current implementation combines the Monte Carlo score with a weak version
+of the original entity heuristic. Let $h_i=1$ when $w_i$ looks like a proper
+name or numeric identifier, and let
+
+$$
+\Delta_a=\max_j\widehat a_j-\min_j\widehat a_j.
+$$
+
+With `entity_boost` $=b$, the ranking score is
+
+$$
+\widetilde a_i
+=
+\widehat a_i+(b-1)\Delta_a h_i.
+$$
+
+The default $b=1.6$ favors entity-like words without discarding the learned
+importance ranking. Setting $b=1$ disables this calibration. Thus the current
+mask is model-guided, but not purely model-derived.
 
 For `k_percent_query` $=\kappa$ and $n>0$, the initial selection size is
 
@@ -110,11 +148,11 @@ K=\max\!\left(1,
 \operatorname{round}\!\left(\frac{\kappa n}{100}\right)\right).
 $$
 
-The preprocessor takes the $K$ largest importance scores, then applies two
+The preprocessor takes the $K$ largest calibrated scores, then applies two
 cleanup steps:
 
 1. **Stop-word removal.** A selected word is removed when all of its normalized
-   fragments belong to ADU's query allowlist. Removed words are not replaced,
+   fragments belong to the query allowlist. Removed words are not replaced,
    so the result may contain fewer than $K$ words.
 2. **Name-span expansion.** If the selection touches a consecutive span of
    capitalized, non-stop words, the entire span is selected. This prevents a
@@ -122,14 +160,14 @@ cleanup steps:
 
 The final number of selected words is therefore not guaranteed to equal $K$.
 
-## 6. Cached mask
+## 6. Cache and token-mask reconstruction
 
 The preprocessor stores selected word indices rather than tokenizer IDs or
 absolute sequence positions. At training time it rebuilds the same word groups
 and returns
 
 $$
-\mathcal I_x^{\mathrm{auto}}(x,y)
+\mathcal I_x^{\mathrm{MC}}(x,y)
 =
 \left(\bigcup_{i\in S_{\mathrm{final}}}P_i\right)
 \cap\mathcal I_{\mathrm{prompt}}.
@@ -139,31 +177,40 @@ The prompt intersection ensures that the reconstructed mask cannot include
 answer, padding, or unattended positions. Each cache entry is keyed by the
 dataset's stable example index.
 
-## 7. Use within ADU
+## 7. Effect during Selective Unlearning
 
-The offline mask replaces only ADU's rule-based query identity selection:
+`DiffusionSDU` substitutes the cached result for the parent's rule-based query
+mask:
 
 $$
-\mathcal I_x^{\mathrm{rule}}(x,y)
+\mathcal I_x^{\mathrm{rule}}(x)
 \quad\longrightarrow\quad
-\mathcal I_x^{\mathrm{auto}}(x,y).
+\mathcal I_x^{\mathrm{MC}}(x,y).
 $$
 
-ADU uses the reconstructed mask to hide answer-predictive query evidence when
-forming its identity-removed teacher context. The rest of ADU is unchanged:
-answer-position selection, secret-free target construction, teacher/student
-distributions, and the combined ADU loss are still defined by the main method.
-The Monte Carlo stage runs before optimization and contributes no gradient.
+The reconstructed mask has two effects:
+
+1. **Counterfactual teacher.** Selected query tokens are replaced with `[MASK]`
+   when constructing the entity-counterfactual teacher input.
+2. **Copied-answer detection.** Answer words matching selected query content are
+   treated as copied subjects and preserved rather than assigned to the forget
+   mask.
+
+The second effect is important: changing the query selector can also change
+which answer positions are preserved or forgotten. The answer-entity heuristic,
+teacher target, and loss equations otherwise remain those of
+`DiffusionSelectiveUnlearning`. Offline scoring contributes no gradient.
 
 ## 8. Assumptions and limitations
 
-- **Predictive dependence is not entity recognition.** The mask may select a
+- **Predictive dependence is not identity recognition.** The mask may select a
   name, date, relation, topic word, or any other content that helps recover the
   answer.
 - **The cache is checkpoint-specific.** A mask generated from another model or
   tokenizer may not represent the dependencies used during training.
 - **Offline and training corruption differ.** Precomputation fully masks the
-  answer, whereas ADU may train under a partially corrupted answer state.
+  answer, whereas training uses ordinary diffusion noise plus deterministic
+  answer-entity masking.
 - **The estimator is noisy and coalition-dependent.** More trials reduce
   variance but do not remove bias caused by correlated coalition sizes.
 - **Word indices require stable preprocessing.** Changes to the prompt, chat
@@ -173,7 +220,7 @@ The Monte Carlo stage runs before optimization and contributes no gradient.
 - **Runtime metadata validation is limited.** The current loader does not prove
   that a cache matches the active checkpoint and preprocessing configuration.
 
-For a valid ADU run, generate the cache from the same base checkpoint, dataset
+For a valid run, generate the cache from the same base checkpoint, dataset
 split, tokenizer, chat template, and sequence-length settings used by training.
 
 ---
@@ -194,10 +241,11 @@ example it performs the following steps:
 5. Samples `num_mc_trials` random query-word coalitions.
 6. Evaluates all trial rows as one model batch.
 7. Computes each word's visible-minus-masked mean answer score.
-8. Selects the top `k_percent_query` percent by rank.
-9. Drops selected pure stop/function words.
-10. Expands any partially selected multi-word proper-name span.
-11. Writes the sorted final word indices into the JSON cache.
+8. Adds the configured prior to entity-like words.
+9. Selects the top `k_percent_query` percent by calibrated rank.
+10. Drops selected pure stop/function words.
+11. Expands any partially selected multi-word proper-name span.
+12. Writes the sorted final word indices into the JSON cache.
 
 The corresponding execution flow is:
 
@@ -216,10 +264,11 @@ Input: tokenized (query, answer), frozen model p_theta0
        importance_i <- mean(L_r | i visible) - mean(L_r | i masked)
        if either sample group is empty: importance_i <- 0
 
-5. selected <- TOP_PERCENT_BY_RANK(importance, k_percent_query)
-6. selected <- DROP_SELECTED_STOPWORDS(selected)
-7. selected <- EXPAND_TOUCHED_CAPITALIZED_NAME_SPANS(selected)
-8. cache[dataset_index].query <- SORT(selected)
+5. ranking  <- ADD_ENTITY_CALIBRATION(importance, entity_boost)
+6. selected <- TOP_PERCENT_BY_RANK(ranking, k_percent_query)
+7. selected <- DROP_SELECTED_STOPWORDS(selected)
+8. selected <- EXPAND_TOUCHED_CAPITALIZED_NAME_SPANS(selected)
+9. cache[dataset_index].query <- SORT(selected)
 ```
 
 ### 9.1 Batched model scoring
@@ -276,6 +325,7 @@ The generated JSON has this structure:
     "model_dir": "saves/finetune/tofu_LLaDA-1.5_retain100_150epochs",
     "split": "forget10",
     "k_percent_query": 20,
+    "entity_boost": 1.6,
     "num_mc_trials": 32,
     "max_length": 512,
     "seed": 0
@@ -301,7 +351,7 @@ current runtime loader does not validate them.
 `--start-index` and `--num-samples` control which dataset rows are processed.
 Even for a partial range, the cache key remains the row's dataset `index`.
 
-## 16. Runtime `query_entity_mask`
+## 12. Runtime `query_entity_mask`
 
 [`DiffusionSDU.query_entity_mask`](../src/trainer/dlm/unlearn/sdu.py) converts
 the cached word ranks into a boolean tensor for each training batch.
@@ -373,6 +423,7 @@ The following parameters belong to cache generation rather than the trainer:
 | `--num-samples` | whole split | Number of rows to process. |
 | `--num-mc-trials` | `32` | Random query-mask coalitions per example. |
 | `--k-percent-query` | `20` | Initial top-ranked query-word percentage. |
+| `--entity-boost` | `1.6` | Additive ranking prior for entity-like words; `1.0` disables it. |
 | `--seed` | `0` | Python and PyTorch random seed. |
 | `--max-length` | `512` | Tokenization/truncation length used while building word ranks. |
 | `--out` | required | Destination JSON cache. |
