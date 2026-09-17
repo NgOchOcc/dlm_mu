@@ -16,8 +16,8 @@ precompute_cache() {
         python scripts/dlm/sdu_precompute.py \
             --model-dir "$SFT_CKPT" \
             --split "$split" \
-            --num-mc-trials 16 \
-            --k-percent-query 15 \
+            --num-mc-trials 32 \
+            --k-percent-query 25 \
             --max-length 256 \
             --out "$cache"
 }
