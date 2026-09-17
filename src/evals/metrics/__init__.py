@@ -28,6 +28,7 @@ from evals.metrics.dlm_memorization import (
     rouge_diffusion,
     exact_memorization_diffusion,
     extraction_strength_diffusion,
+    mcq_accuracy_diffusion,
 )
 from evals.metrics.dlm_rwku import (
     mmlu_accuracy_diffusion,
@@ -92,6 +93,7 @@ _register_metric(probability_diffusion)
 _register_metric(rouge_diffusion)
 _register_metric(exact_memorization_diffusion)
 _register_metric(extraction_strength_diffusion)
+_register_metric(mcq_accuracy_diffusion)
 
 # Register RWKU utility metrics (DLM)
 _register_metric(mmlu_accuracy_diffusion)
