@@ -1,10 +1,10 @@
 import torch.nn.functional as F
 
 from trainer.utils import compute_batch_nll
-from trainer.unlearn.grad_diff import GradDiff
+from trainer.unlearn.gd import GD
 
 
-class SimNPO(GradDiff):
+class SimNPO(GD):
     def __init__(self, delta=0.0, beta=1.0, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.delta = delta

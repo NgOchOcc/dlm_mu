@@ -69,12 +69,7 @@ def main():
     ap.add_argument("--k-percent-query", type=int, default=20)
     ap.add_argument(
         "--entity-boost", type=float, default=1.6,
-        help="Boost capitalized/numeric (proper-name-like) query words before "
-        "the top-k%% cut; 1.0 = no boost, see calibrate_entity_importance. The "
-        "default (1.6) reaches >=80%% mean agreement with the is_entity_surface "
-        "heuristic mask at --k-percent-query 25 or higher; at k<=20 agreement "
-        "is capped below 80%% regardless of boost because most examples have "
-        "more entity words than the top-k%% budget allows.",
+        help="Boost capitalized/numeric query words before ",
     )
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--max-length", type=int, default=512)

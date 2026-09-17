@@ -3,7 +3,7 @@ from trainer.utils import compute_kl_divergence
 from trainer.unlearn.base import UnlearnTrainer
 
 
-class GradDiff(UnlearnTrainer):
+class GD(UnlearnTrainer):
     def __init__(self, gamma=1.0, alpha=1.0, retain_loss_type="NLL", *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.gamma = gamma

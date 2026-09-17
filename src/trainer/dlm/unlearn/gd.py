@@ -15,7 +15,7 @@ class DiffusionGD(DiffusionUnlearnTrainer):
         self.alpha = alpha
         if retain_loss_type != "NLL":
             raise NotImplementedError(
-                f"retain_loss_type={retain_loss_type} not supported for DLM GradDiff; "
+                f"retain_loss_type={retain_loss_type} not supported for DLM GD; "
                 "use 'NLL'."
             )
         self.retain_loss_type = retain_loss_type

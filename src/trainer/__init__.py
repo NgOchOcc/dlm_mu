@@ -4,8 +4,8 @@ from omegaconf import DictConfig, OmegaConf
 from transformers import Trainer, TrainingArguments
 
 from trainer.base import FinetuneTrainer
-from trainer.unlearn.grad_ascent import GA
-from trainer.unlearn.grad_diff import GradDiff
+from trainer.unlearn.ga import GA
+from trainer.unlearn.gd import GD
 from trainer.unlearn.npo import NPO
 from trainer.unlearn.dpo import DPO
 from trainer.unlearn.simnpo import SimNPO
@@ -110,7 +110,7 @@ _register_trainer(FinetuneTrainer)
 
 # Register Unlearning Trainer
 _register_trainer(GA)
-_register_trainer(GradDiff)
+_register_trainer(GD)
 _register_trainer(NPO)
 _register_trainer(DPO)
 _register_trainer(SimNPO)

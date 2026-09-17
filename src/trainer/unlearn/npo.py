@@ -1,8 +1,8 @@
 from trainer.utils import compute_dpo_loss
-from trainer.unlearn.grad_diff import GradDiff
+from trainer.unlearn.gd import GD
 
 
-class NPO(GradDiff):
+class NPO(GD):
     def __init__(self, beta=1.0, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.beta = beta

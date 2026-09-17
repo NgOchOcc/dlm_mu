@@ -1,5 +1,5 @@
 defaults:
-  - GradDiff
+  - GD
 
 handler: NPO
 method_args:

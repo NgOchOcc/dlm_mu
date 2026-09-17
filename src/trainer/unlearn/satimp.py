@@ -1,8 +1,8 @@
-from trainer.unlearn.grad_diff import GradDiff
+from trainer.unlearn.gd import GD
 from trainer.utils import compute_satimp_loss
 
 
-class SatImp(GradDiff):
+class SatImp(GD):
     def __init__(
         self, beta1=5.0, beta2=1.0, gamma=1.0, alpha=0.1, *args, **kwargs
     ):  # attention, satimp requires two beta!!!!

@@ -3,10 +3,10 @@
 import re
 import torch
 import deepspeed
-from trainer.unlearn.grad_diff import GradDiff
+from trainer.unlearn.gd import GD
 
 
-class RMU(GradDiff):
+class RMU(GD):
     def __init__(
         self,
         module_regex="model\.layers\.7",

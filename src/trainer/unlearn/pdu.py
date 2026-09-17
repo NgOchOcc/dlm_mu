@@ -1,10 +1,10 @@
 import torch
 from transformers import TrainerCallback
 
-from trainer.unlearn.grad_diff import GradDiff
+from trainer.unlearn.gd import GD
 
 
-class PDU(GradDiff):
+class PDU(GD):
     def __init__(
         self,
         retain_loss_eps=0.0,

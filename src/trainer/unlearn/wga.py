@@ -1,8 +1,8 @@
-from trainer.unlearn.grad_diff import GradDiff
+from trainer.unlearn.gd import GD
 from trainer.utils import compute_wga_loss
 
 
-class WGA(GradDiff):
+class WGA(GD):
     def __init__(self, beta=1.0, gamma=1.0, alpha=1.0, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.gamma = gamma
