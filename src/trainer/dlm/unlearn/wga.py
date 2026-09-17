@@ -1,9 +1,9 @@
 import torch.nn.functional as F
 
-from trainer.dlm.unlearn.grad_diff import DiffusionGradDiff
+from trainer.dlm.unlearn.gd import DiffusionGD
 
 
-class DiffusionWGA(DiffusionGradDiff):
+class DiffusionWGA(DiffusionGD):
     """Weighted Gradient Ascent for masked diffusion LMs.
 
     On the masked answer positions each token's cross-entropy is weighted by

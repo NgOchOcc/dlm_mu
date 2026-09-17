@@ -1,16 +1,16 @@
 import torch
 import torch.nn.functional as F
 
-from trainer.dlm.unlearn.grad_diff import DiffusionGradDiff
+from trainer.dlm.unlearn.gd import DiffusionGD
 
 
-class DiffusionNPO(DiffusionGradDiff):
+class DiffusionNPO(DiffusionGD):
     """Negative Preference Optimization with the masked-diffusion objective.
 
     The policy and the frozen reference model see the *same* noised forget
     sequence (shared timestep and masking), so their per-example diffusion NLLs
     are directly comparable in the NPO log-sigmoid term. The retain term is the
-    plain diffusion NLL, as in ``DiffusionGradDiff``.
+    plain diffusion NLL, as in ``DiffusionGD``.
     """
 
     def __init__(self, beta=1.0, *args, **kwargs):

@@ -4,7 +4,7 @@
 # backbone, a Diffusion* trainer, and the tofu_dlm eval suite.
 defaults:
   - override /model: LLaDA-8B-Instruct
-  - override /trainer: DiffusionGradDiff
+  - override /trainer: DiffusionGD
   - override /data: unlearn
   - override /data/datasets@data.forget: TOFU_QA_forget
   - override /data/datasets@data.retain: TOFU_QA_retain

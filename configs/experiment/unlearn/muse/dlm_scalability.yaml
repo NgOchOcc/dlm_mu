@@ -5,7 +5,7 @@
 # the diffusion target via model.model_args.pretrained_model_name_or_path.
 defaults:
   - override /model: LLaDA-8B-Instruct
-  - override /trainer: DiffusionGradDiff
+  - override /trainer: DiffusionGD
   - override /data: unlearn
   - override /data/datasets@data.forget: MUSE_forget_scal
   - override /data/datasets@data.retain: MUSE_retain

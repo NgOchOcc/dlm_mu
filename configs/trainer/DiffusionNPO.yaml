@@ -1,5 +1,5 @@
 defaults:
-  - DiffusionGradDiff
+  - DiffusionGD
 
 handler: DiffusionNPO
 method_args:

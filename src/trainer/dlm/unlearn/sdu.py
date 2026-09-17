@@ -3,11 +3,11 @@
 ``DiffusionSDU`` behaves exactly like ``DiffusionSelectiveUnlearning`` — same
 query/answer masking roles, same counterfactual-teacher construction, same
 selective-KL/preserve loss split — but on the query side it replaces the
-hand-written ``_is_entity_surface`` heuristic with a fixed selection computed
+hand-written ``is_entity_surface`` heuristic with a fixed selection computed
 offline (``scripts/dlm/sdu_precompute.py``) via Monte Carlo occlusion
 importance (``trainer.dlm.unlearn.query_importance``). The answer side is
-unchanged: ``_answer_entity_mask`` is inherited as-is from
-``DiffusionSelectiveUnlearning``, still driven by ``_is_entity_surface``.
+unchanged: ``answer_entity_mask`` is inherited as-is from
+``DiffusionSelectiveUnlearning``, still driven by ``is_entity_surface``.
 
 The cache is keyed by the dataset's own stable per-example ``"index"`` field
 (``data.qa.QADataset``), which requires training with a collator that emits
@@ -41,19 +41,19 @@ class DiffusionSDU(DiffusionSelectiveUnlearning):
         self._sdu_cache = _load_cache(mask_cache_path)
         self._current_index = None
 
-    def _sample_selective_state(self, model, forget):
+    def sample_selective_state(self, model, forget):
         if "index" not in forget:
             raise ValueError(
                 "DiffusionSDU requires an index-emitting collator "
                 "(configs/collator/DataCollatorForSupervisedDatasetwithIndex.yaml)"
             )
         self._current_index = forget["index"]
-        return super()._sample_selective_state(model, forget)
+        return super().sample_selective_state(model, forget)
 
-    def _query_entity_mask(self, input_ids, answer_mask, attention_mask):
+    def query_entity_mask(self, input_ids, answer_mask, attention_mask):
         """Query positions selected offline as leaking the memorized answer."""
         tokenizer = self.processing_class
-        prompt_mask = self._prompt_mask(input_ids, answer_mask, attention_mask)
+        prompt_mask = self.prompt_mask(input_ids, answer_mask, attention_mask)
         entity_mask = torch.zeros_like(prompt_mask)
         for batch_index in range(input_ids.shape[0]):
             dataset_index = int(self._current_index[batch_index])

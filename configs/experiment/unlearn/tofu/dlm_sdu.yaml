@@ -2,7 +2,7 @@
 # Forget-only entity-counterfactual selective unlearning for masked-diffusion
 # LMs on TOFU, where both the query-leak mask and the answer-fact mask come
 # from an offline Monte Carlo occlusion cache (scripts/dlm/sdu_precompute.py)
-# instead of the hand-written _is_entity_surface heuristic. Identical to
+# instead of the hand-written is_entity_surface heuristic. Identical to
 # dlm_selective_unlearning.yaml otherwise; requires the index-emitting
 # collator so DiffusionSDU can look each example up in the cache.
 defaults:

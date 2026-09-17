@@ -2,7 +2,7 @@
 
 ``DiffusionSelectiveUnlearning`` currently picks which query tokens to hide
 from the counterfactual teacher with a hand-written heuristic
-(``_is_entity_surface``: capitalized words / digits, minus a stop-word list).
+(``is_entity_surface``: capitalized words / digits, minus a stop-word list).
 This script tests a data-driven alternative: repeatedly mask random subsets
 of query words, measure how much each subset hurts the model's log-probability
 of the true (memorized) answer, and use the per-word marginal contribution
@@ -33,6 +33,7 @@ import argparse
 import json
 import math
 import random
+import re
 import sys
 from pathlib import Path
 
@@ -47,7 +48,10 @@ from data.qa import QADataset  # noqa: E402
 from model import get_model  # noqa: E402
 from trainer.dlm.unlearn.selective_unlearning import (  # noqa: E402
     DiffusionSelectiveUnlearning,
-    _is_entity_surface,
+    content_fragments,
+    content_group_indices,
+    group_word_indices,
+    is_entity_surface,
 )
 from trainer.dlm.unlearn.query_importance import (  # noqa: E402
     build_word_groups,
@@ -59,21 +63,99 @@ from trainer.dlm.unlearn.query_importance import (  # noqa: E402
 
 
 @torch.no_grad()
-def answer_predictions(model, tokenizer, vocab_size, batch_ids, attention_mask, answer_pos, answer_targets):
-    """Mean per-token log p(true token) and the argmax decode, per batch row."""
+def answer_predictions(
+    model,
+    tokenizer,
+    vocab_size,
+    batch_ids,
+    attention_mask,
+    input_ids,
+    answer_pos,
+    score_masks,
+):
+    """Score and decode each row at its Selective-style masked answer positions."""
     logits = model(input_ids=batch_ids, attention_mask=attention_mask).logits
     logits = logits[..., :vocab_size].float()
     log_probs = F.log_softmax(logits, dim=-1)
-    gathered = log_probs[:, answer_pos, :].gather(
-        -1, answer_targets.view(1, -1, 1).expand(batch_ids.shape[0], -1, 1)
-    ).squeeze(-1)
-    mean_logp = gathered.mean(dim=-1).tolist()
-    pred_ids = logits[:, answer_pos, :].argmax(dim=-1)
-    y_hats = [
-        tokenizer.decode(pred_ids[i].tolist(), skip_special_tokens=True)
-        for i in range(batch_ids.shape[0])
-    ]
+    mean_logp, y_hats = [], []
+    for row_index, score_mask in enumerate(score_masks):
+        positions = score_mask.nonzero(as_tuple=True)[0]
+        if positions.numel() == 0:
+            mean_logp.append(float("nan"))
+            y_hats.append("")
+            continue
+        targets = input_ids[positions]
+        gathered = log_probs[row_index, positions, :].gather(
+            -1, targets.unsqueeze(-1)
+        ).squeeze(-1)
+        mean_logp.append(gathered.mean().item())
+        pred_ids = logits[row_index, positions, :].argmax(dim=-1)
+        reconstructed = input_ids.clone()
+        reconstructed[positions] = pred_ids
+        y_hats.append(
+            tokenizer.decode(reconstructed[answer_pos].tolist(), skip_special_tokens=True)
+        )
     return mean_logp, y_hats
+
+
+def selective_answer_masks(tokenizer, input_ids, answer_mask, query_words, selected):
+    """Reproduce SelectiveUnlearning's copy/entity/forget answer masks."""
+    query_entity_mask = torch.zeros_like(answer_mask)
+    for word_index in selected:
+        for position in query_words[word_index]["positions"]:
+            query_entity_mask[position] = True
+
+    answer_copy_mask = torch.zeros_like(answer_mask)
+    query_ids = input_ids[query_entity_mask].tolist()
+    if query_ids:
+        query_text = tokenizer.decode(query_ids, skip_special_tokens=True).lower()
+        query_word_set = {
+            word
+            for word in re.findall(r"[a-z0-9]+", query_text)
+            if len(word) >= 2
+        }
+        answer_indices = answer_mask.nonzero(as_tuple=True)[0]
+        surfaces = [
+            tokenizer.decode([int(token_id)]) for token_id in input_ids[answer_indices]
+        ]
+        for group in group_word_indices(surfaces):
+            fragments = content_fragments(
+                "".join(surfaces[index] for index in group)
+            )
+            if fragments and all(fragment in query_word_set for fragment in fragments):
+                for index in content_group_indices(surfaces, group):
+                    answer_copy_mask[answer_indices[index]] = True
+
+    answer_entity_mask = answer_copy_mask.clone()
+    answer_indices = answer_mask.nonzero(as_tuple=True)[0]
+    surfaces = [
+        tokenizer.decode([int(token_id)]) for token_id in input_ids[answer_indices]
+    ]
+    for group in group_word_indices(surfaces):
+        word = "".join(surfaces[index] for index in group).strip()
+        if is_entity_surface(word, DiffusionSelectiveUnlearning._ANSWER_KEEP):
+            for index in content_group_indices(surfaces, group):
+                answer_entity_mask[answer_indices[index]] = True
+
+    answer_forget_mask = answer_entity_mask & ~answer_copy_mask
+    answer_hide_mask = answer_copy_mask | answer_forget_mask
+    return query_entity_mask, answer_copy_mask, answer_forget_mask, answer_hide_mask
+
+
+def render_masked_words(words, mask):
+    return " ".join(
+        "[MASK]" if any(bool(mask[position]) for position in word["positions"])
+        else word["text"]
+        for word in words
+    )
+
+
+def masked_word_texts(words, mask):
+    return [
+        word["text"]
+        for word in words
+        if any(bool(mask[position]) for position in word["positions"])
+    ]
 
 
 def probe_example(model, tokenizer, mask_id, vocab_size, device, item, num_trials, k_percents, rng):
@@ -86,16 +168,7 @@ def probe_example(model, tokenizer, mask_id, vocab_size, device, item, num_trial
     answer_targets = input_ids[answer_pos]
     query_pos = (labels == -100).nonzero(as_tuple=True)[0]
     words = build_word_groups(tokenizer, input_ids, query_pos)
-
-    base = input_ids.clone()
-    base[answer_pos] = mask_id
-
-    def masked_row(word_indices):
-        row = base.clone()
-        for i in word_indices:
-            for pos in words[i]["positions"]:
-                row[pos] = mask_id
-        return row
+    answer_words = build_word_groups(tokenizer, input_ids, answer_pos)
 
     importance = mc_query_leak_importance(
         model, vocab_size, mask_id, input_ids, attention_mask,
@@ -104,7 +177,7 @@ def probe_example(model, tokenizer, mask_id, vocab_size, device, item, num_trial
 
     heuristic_selected = {
         i for i, w in enumerate(words)
-        if _is_entity_surface(w["text"], DiffusionSelectiveUnlearning._QUERY_KEEP)
+        if is_entity_surface(w["text"], DiffusionSelectiveUnlearning._QUERY_KEEP)
     }
 
     # --- fixed top-k% selections, applied as a hard mask exactly like
@@ -129,33 +202,57 @@ def probe_example(model, tokenizer, mask_id, vocab_size, device, item, num_trial
             if i not in entry_k:
                 entry_k[i] = k
 
-    rows_spec = [("none", "Nothing masked", set()), ("heuristic", "Heuristic set masked", heuristic_selected)]
+    rows_spec = [("none", "No query words selected", set()), ("heuristic", "Heuristic set masked", heuristic_selected)]
     for k in k_percents_sorted:
         rows_spec.append((f"mc_top{k}", f"MC top-{k}% masked", selections[k]))
-    rows_spec.append(("all", "Everything masked", set(range(len(words)))))
+    rows_spec.append(("all", "All query words selected", set(range(len(words)))))
 
-    batch_ids = torch.stack([masked_row(sel) for _, _, sel in rows_spec], dim=0)
+    row_states = []
+    for _, _, selected in rows_spec:
+        query_mask, copy_mask, forget_mask, hide_mask = selective_answer_masks(
+            tokenizer, input_ids, labels != -100, words, selected
+        )
+        row = input_ids.clone()
+        row[query_mask | hide_mask] = mask_id
+        row_states.append((row, query_mask, copy_mask, forget_mask, hide_mask))
+
+    batch_ids = torch.stack([state[0] for state in row_states], dim=0)
     attn = attention_mask.unsqueeze(0).expand(len(rows_spec), -1)
     mean_logp, y_hats = answer_predictions(
-        model, tokenizer, vocab_size, batch_ids, attn, answer_pos, answer_targets
+        model,
+        tokenizer,
+        vocab_size,
+        batch_ids,
+        attn,
+        input_ids,
+        answer_pos,
+        [state[4] for state in row_states],
     )
 
     question = item.get("question")
     answer_text = tokenizer.decode(answer_targets.tolist(), skip_special_tokens=True)
 
-    rows = [
-        {
+    rows = []
+    for (key, label, selected), state, log_p, y_hat in zip(
+        rows_spec, row_states, mean_logp, y_hats
+    ):
+        _, query_mask, copy_mask, forget_mask, hide_mask = state
+        rows.append({
             "key": key,
             "label": label,
-            "selected": sorted(sel),
-            "n_selected": len(sel),
-            "log_p": lp,
-            "prob": math.exp(lp),
-            "y_hat": yh,
-            "matches": yh.strip() == answer_text.strip(),
-        }
-        for (key, label, sel), lp, yh in zip(rows_spec, mean_logp, y_hats)
-    ]
+            "selected": sorted(selected),
+            "n_selected": len(selected),
+            "query_before_mask": " ".join(word["text"] for word in words),
+            "masked_query": render_masked_words(words, query_mask),
+            "answer_before_mask": answer_text,
+            "answer_sent_to_model": render_masked_words(answer_words, hide_mask),
+            "answer_copy_words": masked_word_texts(answer_words, copy_mask),
+            "answer_forget_words": masked_word_texts(answer_words, forget_mask),
+            "log_p": log_p,
+            "prob": math.exp(log_p) if math.isfinite(log_p) else float("nan"),
+            "y_hat": y_hat,
+            "matches": y_hat.strip() == answer_text.strip(),
+        })
 
     return {
         "question": question,
@@ -225,7 +322,7 @@ def render_sample(idx, result):
         text_color = "#ffffff" if dark_text else PALETTE["ink"]
         badges = ""
         if i in result["heuristic_selected"]:
-            badges += '<span class="badge badge-h" title="Flagged by the existing heuristic (_is_entity_surface)">H</span>'
+            badges += '<span class="badge badge-h" title="Flagged by the existing heuristic (is_entity_surface)">H</span>'
         if i in result["entry_k"]:
             k = result["entry_k"][i]
             badges += (
@@ -238,10 +335,11 @@ def render_sample(idx, result):
             f'{esc(word)}{badges}</span>'
         )
 
-    max_p = max(r["prob"] for r in result["rows"]) or 1.0
+    finite_probs = [r["prob"] for r in result["rows"] if math.isfinite(r["prob"])]
+    max_p = max(finite_probs, default=1.0) or 1.0
     row_html = ""
     for r in result["rows"]:
-        width = max(2.0, 100.0 * r["prob"] / max_p)
+        width = max(2.0, 100.0 * r["prob"] / max_p) if math.isfinite(r["prob"]) else 2.0
         color = PALETTE["orange"] if r["key"] == "heuristic" else (
             PALETTE["muted"] if r["key"] in ("none", "all") else PALETTE["aqua"]
         )
@@ -257,6 +355,30 @@ def render_sample(idx, result):
                 f'<div class="masked-words"><span class="muted">masked:</span> '
                 f'{masked_words_text}</div>'
             )
+        query_before_mask_html = (
+            f'<div class="masked-words"><span class="muted">query before mask:</span> '
+            f'{esc(r["query_before_mask"])}</div>'
+        )
+        masked_query_html = (
+            f'<div class="masked-words"><span class="muted">query sent to model:</span> '
+            f'{esc(r["masked_query"])}</div>'
+        )
+        answer_before_mask_html = (
+            f'<div class="masked-words"><span class="muted">answer before mask:</span> '
+            f'{esc(r["answer_before_mask"])}</div>'
+        )
+        answer_sent_to_model_html = (
+            f'<div class="masked-words"><span class="muted">answer sent to model:</span> '
+            f'{esc(r["answer_sent_to_model"])}</div>'
+        )
+        copy_words_html = (
+            f'<div class="masked-words"><span class="muted">answer copy mask:</span> '
+            f'{esc(", ".join(r["answer_copy_words"]) or "(none)")}</div>'
+        )
+        forget_words_html = (
+            f'<div class="masked-words"><span class="muted">answer forget mask:</span> '
+            f'{esc(", ".join(r["answer_forget_words"]) or "(none)")}</div>'
+        )
         row_html += f"""
         <div class="cond-row">
           <div class="cond-top">
@@ -268,6 +390,12 @@ def render_sample(idx, result):
             <span class="prob-value">{r['prob']*100:.2f}% <span class="muted">mean per-token prob</span></span>
             <span class="yhat"><span class="muted">y&#770;:</span> {esc(r['y_hat']) or '<em>(empty)</em>'}</span>
           </div>
+          {query_before_mask_html}
+          {masked_query_html}
+          {answer_before_mask_html}
+          {answer_sent_to_model_html}
+          {copy_words_html}
+          {forget_words_html}
           {masked_words_html}
         </div>"""
 
@@ -381,7 +509,7 @@ def render_html(results, args):
     answer more, averaged over {args.num_mc_trials} random subsets per example; each
     trial draws its own subset size p&#126;Uniform(0,1) and masks a Bernoulli(p)
     subset of words). <b>H</b> = flagged by the existing
-    hand-written heuristic (<code>_is_entity_surface</code>); the numeric badge shows
+    hand-written heuristic (<code>is_entity_surface</code>); the numeric badge shows
     the smallest top-k% cut (ranked by importance) that pulls the word into the
     mask set. Each masking condition below is applied as a hard 0/1 mask exactly
     like <code>DiffusionSelectiveUnlearning</code> applies its entity mask, and

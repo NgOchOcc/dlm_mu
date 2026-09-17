@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+j#!/usr/bin/env python3
 import argparse
 import json
 import os
@@ -34,9 +34,6 @@ FORGET_ONLY_METHODS = {
     "DiffusionSimNPO_forgetonly",
     "DiffusionWGA_forgetonly",
     "DiffusionBST",
-    "DiffusionRDU",
-    "DiffusionRepelGenDistill",
-    "DiffusionADU",
 }
 MODELS = ("tofu_Dream-v0-Instruct-7B_", "tofu_LLaDA-8B-Instruct_")
 SPLITS = ("forget10", "forget05", "forget01")

@@ -1,4 +1,4 @@
-"""Compare the heuristic query-entity selection (``_is_entity_surface``)
+"""Compare the heuristic query-entity selection (``is_entity_surface``)
 against each Monte Carlo top-k% selection, aggregated over every example in
 a ``query_leak_probe.py --json`` output.
 

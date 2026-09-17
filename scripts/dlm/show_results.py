@@ -158,16 +158,13 @@ METHOD_ORDER = {
     "NPO": 6,
     "SimNPO": 7,
     "WGA": 8,
-    "RDU": 1000,
-    "RepelGenDistill": 1000,
 }
 
 FORGET_ONLY_SUFFIXES = ("_forgetonly", "_forget_only")
-INHERENT_FORGET_ONLY = {"RDU", "RepelGenDistill", "BST"}
+INHERENT_FORGET_ONLY = {"BST"}
 
 DISPLAY_METHOD = {
     "GradAscent": "GA",
-    "RepelGenDistill": "RDU",
 }
 
 
@@ -285,7 +282,7 @@ def _read_json(path):
         return None
 
 
-def load_summary(eval_dir, synthetic_rdu_fluency=False):
+def load_summary(eval_dir):
     if not eval_dir.is_dir():
         return None
     noprompt = eval_dir / "TOFU_SUMMARY_noprompt.json"
@@ -295,15 +292,6 @@ def load_summary(eval_dir, synthetic_rdu_fluency=False):
     data = _read_json(summary)
     if data is None:
         return None
-    if synthetic_rdu_fluency and eval_dir.name.endswith(
-        ("DiffusionRDU", "DiffusionRepelGenDistill")
-    ):
-        synthetic_path = eval_dir / "forget_Q_A_Fluency_synthetic.json"
-        if synthetic_path.exists():
-            synthetic = _read_json(synthetic_path) or {}
-            synthetic_value = synthetic.get("agg_value")
-            if isinstance(synthetic_value, (int, float)):
-                data["forget_Q_A_Fluency"] = synthetic_value
     erasing_knowledge = _component_hmean(data, ERASING_KNOWLEDGE_COMPONENTS)
     erasing_judge = _component_amean(data, ERASING_JUDGE_COMPONENTS)
     erase_quality = _hmean([erasing_knowledge, erasing_judge])
@@ -389,20 +377,14 @@ def collect_rows(
     forget_split,
     mode="both",
     selected_method=None,
-    synthetic_rdu_fluency=False,
 ):
     rows = []
-    base = load_summary(
-        eval_root / f"tofu_{model}_retain100_{forget_split}",
-        synthetic_rdu_fluency,
-    )
+    base = load_summary(eval_root / f"tofu_{model}_retain100_{forget_split}")
     if base is not None:
         rows.append(("base", base))
 
     retain = RETAIN_FOR[forget_split]
-    retain_data = load_summary(
-        eval_root / f"tofu_{model}_{retain}", synthetic_rdu_fluency
-    )
+    retain_data = load_summary(eval_root / f"tofu_{model}_{retain}")
     if retain_data is not None:
         rows.append((retain, retain_data))
 
@@ -423,7 +405,7 @@ def collect_rows(
             and (is_forget_only or _is_inherent_forget_only(base_method))
         ):
             continue
-        data = load_summary(eval_dir, synthetic_rdu_fluency)
+        data = load_summary(eval_dir)
         if data is not None:
             source = _run_source_label(eval_dir, eval_root, forget_split)
             display_method = (
@@ -585,12 +567,6 @@ def main():
         "standard baselines. Reference rows always show.",
     )
     ap.add_argument(
-        "--synthetic-rdu-fluency",
-        action="store_true",
-        help="Use clearly labeled synthetic RDU forget fluency files instead of "
-        "the original judge aggregate.",
-    )
-    ap.add_argument(
         "--detail",
         action="store_true",
         help="Show all component metrics used by EQ, MU, and LQ in addition "
@@ -615,9 +591,6 @@ def main():
         help="Only show models matching this case-insensitive name prefix.",
     )
     args = ap.parse_args()
-    synthetic_label = (
-        " [SYNTHETIC RDU FLUENCY]" if args.synthetic_rdu_fluency else ""
-    )
     groups = DETAIL_GROUPS if args.detail else GROUPS
     cols = [(key, header) for _, group_cols in groups for key, header in group_cols]
     detail_label = " [DETAIL]" if args.detail else ""
@@ -641,7 +614,6 @@ def main():
                     forget_split,
                     mode=args.mode,
                     selected_method=args.method,
-                    synthetic_rdu_fluency=args.synthetic_rdu_fluency,
                 )
             )
             if not block:
@@ -652,13 +624,13 @@ def main():
             if args.detail:
                 for model in present:
                     print_table(
-                        f"{forget_split} — {model}{synthetic_label}{detail_label}",
+                        f"{forget_split} — {model}{detail_label}",
                         {model: model_rows[model]}, [model], RETAIN_FOR[forget_split],
                         groups, cols, JUDGE_METRICS, LOWER_BETTER,
                     )
             else:
                 print_table(
-                    f"{forget_split}{synthetic_label}", model_rows, present,
+                    f"{forget_split}", model_rows, present,
                     RETAIN_FOR[forget_split],
                     groups, cols, JUDGE_METRICS, LOWER_BETTER,
                 )

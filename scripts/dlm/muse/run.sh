@@ -8,7 +8,7 @@ SFT_EPOCHS="${SFT_EPOCHS:-10}"
 UNLEARN_EPOCHS="${UNLEARN_EPOCHS:-10}"
 NPROC=$(ngpus "$GPUS")
 DATA_SPLITS=(News Books)
-TRAINERS=(DiffusionGA DiffusionGradDiff DiffusionNPO DiffusionSimNPO DiffusionWGA)
+TRAINERS=(DiffusionGA DiffusionGD DiffusionNPO DiffusionSimNPO DiffusionWGA)
 
 muse_eval() {
     local task=$1 ckpt=$2 data_split=$3
