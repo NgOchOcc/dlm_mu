@@ -1,0 +1,47 @@
+# @package _global_
+# Forget-only entity-counterfactual selective unlearning for masked-diffusion
+# LMs on MUSE, where both the query-leak mask and the answer-fact mask come
+# from an offline Monte Carlo occlusion cache (scripts/dlm/sdu_precompute.py)
+# instead of the hand-written is_entity_surface heuristic. DiffusionSDU needs
+# query/answer boundaries (labels != -100) and a stable per-example "index",
+# neither of which the MUSE_forget raw pretraining corpus has, so the forget
+# set here is MUSE_forget_knowmem (the knowmem forget_qa QA split) instead of
+# MUSE_forget; requires the index-emitting collator so DiffusionSDU can look
+# each example up in the cache.
+defaults:
+  - override /model: LLaDA-8B-Instruct
+  - override /trainer: DiffusionSDU
+  - override /data: unlearn
+  - override /data/datasets@data.forget: MUSE_forget_knowmem
+  - override /data/datasets@data.retain: null
+  - override /collator: DataCollatorForSupervisedDatasetwithIndex
+  - override /eval: muse_dlm
+
+data_split: News
+retain_logs_path: null
+
+data:
+  anchor: forget
+  forget:
+    MUSE_forget_knowmem:
+      args:
+        hf_args:
+          path: muse-bench/MUSE-${data_split}
+        few_shot_dataset_hf_args:
+          path: muse-bench/MUSE-${data_split}
+
+eval:
+  muse_dlm:
+    data_split: ${data_split}
+    retain_logs_path: ${retain_logs_path}
+    overwrite: true
+
+trainer:
+  args:
+    warmup_epochs: 1.0
+    learning_rate: 1e-5
+    weight_decay: 0.01
+    num_train_epochs: 10
+    lr_scheduler_type: constant
+
+task_name: ???

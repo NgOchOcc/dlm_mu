@@ -62,7 +62,17 @@ def precompute_example(model, tokenizer, mask_id, vocab_size, device, item, args
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--model-dir", required=True)
-    ap.add_argument("--split", default="forget10", choices=["forget01", "forget05", "forget10"])
+    ap.add_argument("--dataset-path", default="locuslab/TOFU")
+    ap.add_argument(
+        "--dataset-name", default="forget10",
+        help="HF dataset config name (TOFU: forget10/forget05/forget01; MUSE: knowmem)",
+    )
+    ap.add_argument(
+        "--split", default="train",
+        help="HF dataset split (TOFU: train; MUSE knowmem: forget_qa/retain_qa)",
+    )
+    ap.add_argument("--question-key", default="question")
+    ap.add_argument("--answer-key", default="answer")
     ap.add_argument("--start-index", type=int, default=0)
     ap.add_argument("--num-samples", type=int, default=None, help="default: whole split")
     ap.add_argument("--num-mc-trials", type=int, default=32)
@@ -90,11 +100,11 @@ def main():
     vocab_size = len(tokenizer)
 
     dataset = QADataset(
-        hf_args={"name": args.split, "split": "train", "path": "locuslab/TOFU"},
+        hf_args={"name": args.dataset_name, "split": args.split, "path": args.dataset_path},
         template_args={"apply_chat_template": True, "system_prompt": None},
         tokenizer=tokenizer,
-        question_key="question",
-        answer_key="answer",
+        question_key=args.question_key,
+        answer_key=args.answer_key,
         max_length=args.max_length,
     )
 
@@ -115,6 +125,8 @@ def main():
     cache = {
         "meta": {
             "model_dir": args.model_dir,
+            "dataset_path": args.dataset_path,
+            "dataset_name": args.dataset_name,
             "split": args.split,
             "k_percent_query": args.k_percent_query,
             "entity_boost": args.entity_boost,

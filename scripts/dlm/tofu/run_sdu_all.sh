@@ -15,7 +15,7 @@ precompute_cache() {
     CUDA_VISIBLE_DEVICES="${gpus%%,*}" \
         python scripts/dlm/sdu_precompute.py \
             --model-dir "$SFT_CKPT" \
-            --split "$split" \
+            --dataset-name "$split" \
             --num-mc-trials 32 \
             --k-percent-query 25 \
             --max-length 256 \
