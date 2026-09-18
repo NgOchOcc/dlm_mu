@@ -1,0 +1,45 @@
+# @package _global_
+# Forget-only masked-diffusion (LLaDA/Dream) unlearning on MUSE, same as
+# dlm_forget_only.yaml but trained on the knowmem forget_qa QA split
+# (MUSE_forget_knowmem) instead of the MUSE_forget raw pretraining corpus, so
+# the baselines (GA/GD/NPO/SimNPO/WGA) see the same question/answer data as
+# DiffusionSDU (dlm_sdu.yaml) rather than raw text. retain stays null (no
+# retain batch), matching the RWKU/GAP forget-only precedent: with no retain
+# batch, DiffusionUnlearnTrainer.optional_retain_loss returns 0.0, so the
+# alpha term vanishes for GD/NPO/SimNPO/WGA and GA is unchanged.
+defaults:
+  - override /model: LLaDA-8B-Instruct
+  - override /trainer: DiffusionGD
+  - override /data: unlearn
+  - override /data/datasets@data.forget: MUSE_forget_knowmem
+  - override /data/datasets@data.retain: null
+  - override /eval: muse_dlm
+
+data_split: News
+retain_logs_path: null
+
+data:
+  anchor: forget
+  forget:
+    MUSE_forget_knowmem:
+      args:
+        hf_args:
+          path: muse-bench/MUSE-${data_split}
+        few_shot_dataset_hf_args:
+          path: muse-bench/MUSE-${data_split}
+
+eval:
+  muse_dlm:
+    data_split: ${data_split}
+    retain_logs_path: ${retain_logs_path}
+    overwrite: true
+
+trainer:
+  args:
+    warmup_epochs: 1.0
+    learning_rate: 1e-5
+    weight_decay: 0.01
+    num_train_epochs: 10
+    lr_scheduler_type: constant
+
+task_name: ???
