@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Per-entity RWKU unlearning, matching the MDU reference setting: no SFT stage,
-# forget-only (no retain term), 3 epochs, lr 1e-5, per-device batch 4. One
+# forget-only (no retain term), lr 1e-5, per-device batch 4. SDU trains for 5
+# epochs and every other method for 1 (SDU_EPOCHS / UNLEARN_EPOCHS). One
 # training run per target entity -- RWKU's own evaluation filters every forget
 # and neighbor probe by `subject`, so a checkpoint that forgot all entities at
 # once could not be scored the way RWKU reports results.
@@ -29,7 +30,17 @@ pin_single_gpu
 load_subjects
 
 SETTING="${SETTING:-train_v1}"
-EPOCHS="${UNLEARN_EPOCHS:-2}"
+# SDU needs more passes than the gradient-based methods: its loss only shapes
+# the selected entity positions, so a single epoch barely moves the model.
+SDU_EPOCHS="${SDU_EPOCHS:-5}"
+EPOCHS="${UNLEARN_EPOCHS:-1}"
+
+epochs_for() {
+    case "$1" in
+        DiffusionSDU) echo "$SDU_EPOCHS" ;;
+        *)            echo "$EPOCHS" ;;
+    esac
+}
 LR="${UNLEARN_LR:-1e-5}"
 BS="${UNLEARN_BS:-4}"
 ACCUM="${UNLEARN_ACCUM:-8}"
@@ -75,6 +86,7 @@ sdu_cache_for() {
 run_one() {
     local method=$1 subject=$2 task=$3
     local exp=unlearn/rwku/dlm
+    local epochs; epochs=$(epochs_for "$method")
     local extra=()
     if [[ "$method" == "DiffusionSDU" ]]; then
         exp=unlearn/rwku/dlm_sdu
@@ -96,7 +108,7 @@ run_one() {
         trainer="${method}" \
         task_name="${task}" \
         data.forget.RWKU_forget_pair.args.hf_args.filter_value="\"${subject}\"" \
-        trainer.args.num_train_epochs=${EPOCHS} \
+        trainer.args.num_train_epochs=${epochs} \
         trainer.args.learning_rate=${LR} \
         trainer.args.per_device_train_batch_size=${BS} \
         trainer.args.gradient_accumulation_steps=${ACCUM} \
@@ -117,7 +129,8 @@ echo "=== RWKU per-entity unlearning ==="
 echo "  model    : ${MODEL_KEY} (${MODEL}) <- ${BASE_CKPT}"
 echo "  methods  : ${METHOD_LIST[*]}"
 echo "  entities : ${#RWKU_SUBJECTS[@]}"
-echo "  setting  : ${SETTING}  (${EPOCHS} epochs, lr ${LR}, bs ${BS})"
+echo "  setting  : ${SETTING}  (lr ${LR}, bs ${BS})"
+echo "  epochs   : ${EPOCHS} (${SDU_EPOCHS} for SDU)"
 echo "  runs     : $(( ${#METHOD_LIST[@]} * ${#RWKU_SUBJECTS[@]} ))"
 echo
 
