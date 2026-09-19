@@ -1,13 +1,18 @@
 #!/usr/bin/env python3
-"""Continuously LLM-judge every completed TOFU evaluation directory.
+"""Continuously LLM-judge every completed TOFU or MUSE evaluation directory.
 
-Each dataset (forget, retain, real-author, world-fact) becomes eligible
-independently, as soon as its own ROUGE metric is present in
-``TOFU_SUMMARY.json`` and ``TOFU_EVAL.json`` has generations for it. This
-lets forget-only runs (no retain/ra/wf generations) get their forget split
-judged, and lets runs missing an unrelated metric (e.g. PARA_ROUGE) still
-get judged on the splits they do have. Results are checkpointed per sample,
-so interrupted runs resume without repeating successful judge calls.
+Each dataset becomes eligible independently, as soon as its own ROUGE metric
+is present in the benchmark's summary file and its eval file has generations
+for it. This lets forget-only runs (no retain/ra/wf generations) get their
+forget split judged, and lets runs missing an unrelated metric (e.g.
+PARA_ROUGE) still get judged on the splits they do have. Results are
+checkpointed per sample, so interrupted runs resume without repeating
+successful judge calls.
+
+Use ``--benchmark tofu`` (default) for TOFU_SUMMARY.json/TOFU_EVAL.json with
+datasets forget/retain/ra/wf, or ``--benchmark muse`` for
+MUSE_SUMMARY.json/MUSE_EVAL.json with datasets forget_knowmem/forget_verbmem/
+retain_knowmem.
 """
 
 import argparse
@@ -39,16 +44,38 @@ parse_linguistic = JUDGE_API.parse_linguistic
 query_judge_many = JUDGE_API.query_judge_many
 
 DEFAULT_EVAL_ROOT = ROOT / "saves/ablation"
-SUMMARY_NAME = "TOFU_SUMMARY.json"
-EVAL_NAME = "TOFU_EVAL.json"
 COMPLETE_MARKER = "LLM_JUDGE_COMPLETE.json"
 
-DATASETS = {
-    "forget": "forget_Q_A_ROUGE",
-    "retain": "retain_Q_A_ROUGE",
-    "ra": "ra_Q_A_ROUGE",
-    "wf": "wf_Q_A_ROUGE",
+BENCHMARKS = {
+    "tofu": {
+        "summary_name": "TOFU_SUMMARY.json",
+        "eval_name": "TOFU_EVAL.json",
+        "extra_summary_names": ("TOFU_SUMMARY_noprompt.json",),
+        "datasets": {
+            "forget": "forget_Q_A_ROUGE",
+            "retain": "retain_Q_A_ROUGE",
+            "ra": "ra_Q_A_ROUGE",
+            "wf": "wf_Q_A_ROUGE",
+        },
+    },
+    "muse": {
+        "summary_name": "MUSE_SUMMARY.json",
+        "eval_name": "MUSE_EVAL.json",
+        "extra_summary_names": (),
+        "datasets": {
+            "forget_knowmem": "forget_knowmem_ROUGE",
+            "forget_verbmem": "forget_verbmem_ROUGE",
+            "retain_knowmem": "retain_knowmem_ROUGE",
+        },
+    },
 }
+
+# Populated from BENCHMARKS by main() once --benchmark is parsed.
+SUMMARY_NAME = None
+EVAL_NAME = None
+EXTRA_SUMMARY_NAMES = ()
+DATASETS = {}
+
 DIMENSIONS = ("Fluency", "Relevance", "Correctness")
 
 UTILITY_PROMPT = """
@@ -84,12 +111,18 @@ JSON. Do not repeat or quote any part of the model response:
 
 def parse_args():
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--benchmark",
+        choices=tuple(BENCHMARKS),
+        default="tofu",
+        help="Which eval output layout/dataset set to judge (default: tofu).",
+    )
     parser.add_argument("--eval-root", type=Path, default=DEFAULT_EVAL_ROOT)
     parser.add_argument(
         "--datasets",
         nargs="+",
-        choices=tuple(DATASETS),
-        default=list(DATASETS),
+        default=None,
+        help="Subset of the benchmark's datasets to judge (default: all of them).",
     )
     parser.add_argument("--poll-seconds", type=float, default=60.0)
     parser.add_argument("--batch-size", type=int, default=32)
@@ -121,7 +154,7 @@ def summary_paths(eval_dir):
         path
         for path in (
             eval_dir / SUMMARY_NAME,
-            eval_dir / "TOFU_SUMMARY_noprompt.json",
+            *(eval_dir / name for name in EXTRA_SUMMARY_NAMES),
         )
         if path.exists()
     ]
@@ -143,10 +176,10 @@ def load_entries(eval_data, dataset):
 def inspect_directory(eval_dir, datasets):
     """Datasets that have both a computed ROUGE metric and generations to judge.
 
-    Checked per dataset rather than requiring every standard TOFU metric to be
-    present, so a forget-only run (no retain/ra/wf generations) still gets its
-    forget split judged, and a run missing an unrelated metric still gets
-    judged on the splits it does have.
+    Checked per dataset rather than requiring every standard benchmark metric
+    to be present, so a forget-only run (no retain generations) still gets
+    its forget split(s) judged, and a run missing an unrelated metric still
+    gets judged on the splits it does have.
     """
     summary = load_json(eval_dir / SUMMARY_NAME)
     eval_data = load_json(eval_dir / EVAL_NAME)
@@ -199,7 +232,7 @@ def dataset_is_complete(cached, entries):
 
 
 def prompt_for(dataset, entry):
-    if dataset == "forget":
+    if dataset == "forget" or dataset.startswith("forget_"):
         return linguistic_prompt(
             entry["input"], entry["ground_truth"], entry["generation"]
         )
@@ -388,6 +421,8 @@ def scan_once(args):
 
 
 def main():
+    global SUMMARY_NAME, EVAL_NAME, EXTRA_SUMMARY_NAMES, DATASETS
+
     args = parse_args()
     args.eval_root = args.eval_root.resolve()
     if args.poll_seconds <= 0:
@@ -396,6 +431,22 @@ def main():
         raise SystemExit("--batch-size must be greater than zero")
     if args.overwrite and not args.once:
         raise SystemExit("use --overwrite together with --once to avoid repeated re-judging")
+
+    benchmark = BENCHMARKS[args.benchmark]
+    SUMMARY_NAME = benchmark["summary_name"]
+    EVAL_NAME = benchmark["eval_name"]
+    EXTRA_SUMMARY_NAMES = benchmark["extra_summary_names"]
+    DATASETS = benchmark["datasets"]
+
+    if args.datasets is None:
+        args.datasets = list(DATASETS)
+    else:
+        unknown = [d for d in args.datasets if d not in DATASETS]
+        if unknown:
+            raise SystemExit(
+                f"--datasets got {unknown} not in benchmark {args.benchmark!r}'s "
+                f"datasets: {list(DATASETS)}"
+            )
 
     lock_handle = acquire_lock(args.eval_root)
     try:

@@ -303,9 +303,7 @@ class DiffusionSelectiveUnlearning(DiffusionUnlearnTrainer):
 
     @torch.no_grad()
     def teacher_log_probs(self, input_ids, attention_mask, positions):
-        outputs = self.ref_model(
-            input_ids=input_ids, attention_mask=attention_mask
-        )
+        outputs = self.ref_model(input_ids=input_ids, attention_mask=attention_mask)
         logits = self._postprocess_outputs(outputs).logits[positions]
         return self._log_probs(logits)
 
@@ -333,7 +331,6 @@ class DiffusionSelectiveUnlearning(DiffusionUnlearnTrainer):
         return log_q.detach(), q.detach()
 
     def sample_selective_state(self, model, forget):
-        """Sample and evaluate the shared answer state from the method spec."""
         if self.processing_class.padding_side != "right":
             raise ValueError("selective unlearning requires right padding")
 
@@ -341,9 +338,7 @@ class DiffusionSelectiveUnlearning(DiffusionUnlearnTrainer):
         labels = forget["labels"]
         attention_mask = forget.get("attention_mask", None)
         if self.eos_pad_to is not None:
-            input_ids, labels, attention_mask = self._extend_response_with_eos(
-                input_ids, labels, attention_mask
-            )
+            input_ids, labels, attention_mask = self._extend_response_with_eos(input_ids, labels, attention_mask)
         prepared_inputs = {"input_ids": input_ids, "labels": labels}
         if attention_mask is not None:
             prepared_inputs["attention_mask"] = attention_mask
@@ -354,34 +349,19 @@ class DiffusionSelectiveUnlearning(DiffusionUnlearnTrainer):
 
         batch_size, sequence_length = input_ids.shape
         answer_mask = labels != -100
-        query_entity_mask = self.query_entity_mask(
-            input_ids, answer_mask, attention_mask
-        )
-        answer_copy_mask = self.answer_copy_mask(
-            input_ids, answer_mask, query_entity_mask
-        )
-        answer_entity_mask = self.answer_entity_mask(
-            input_ids, answer_mask, answer_copy_mask
-        )
+        query_entity_mask = self.query_entity_mask(input_ids, answer_mask, attention_mask)
+        answer_copy_mask = self.answer_copy_mask(input_ids, answer_mask, query_entity_mask)
+        answer_entity_mask = self.answer_entity_mask(input_ids, answer_mask, answer_copy_mask)
         answer_forget_mask = answer_entity_mask & ~answer_copy_mask
         answer_hide_mask = answer_copy_mask | answer_forget_mask
 
         timesteps = self._sample_timesteps(batch_size, input_ids.device)
-        mask_probability = 1.0 - self.scheduler(timesteps).unsqueeze(1).expand(
-            batch_size, sequence_length
-        )
-        ordinary_mask = (
-            torch.rand((batch_size, sequence_length), device=input_ids.device)
-            < mask_probability
-        ) & answer_mask
+        mask_probability = 1.0 - self.scheduler(timesteps).unsqueeze(1).expand(batch_size, sequence_length)
+        ordinary_mask = (torch.rand((batch_size, sequence_length), device=input_ids.device) < mask_probability) & answer_mask
         effective_mask = ordinary_mask | answer_hide_mask
-        noised_input_ids = torch.where(
-            effective_mask, self.mask_id, input_ids
-        )
+        noised_input_ids = torch.where(effective_mask, self.mask_id, input_ids)
 
-        outputs = model(
-            input_ids=noised_input_ids, attention_mask=attention_mask
-        )
+        outputs = model(input_ids=noised_input_ids, attention_mask=attention_mask)
         outputs = self._postprocess_outputs(outputs)
         return {
             "outputs": outputs,
@@ -399,40 +379,26 @@ class DiffusionSelectiveUnlearning(DiffusionUnlearnTrainer):
             "noised_input_ids": noised_input_ids,
         }
 
-    def compute_loss(
-        self, model, inputs, return_outputs=False, num_items_in_batch=None
-    ):
-        state = self.sample_selective_state(model, inputs["forget"])
-        masked = state["effective_mask"]
-        noised = state["noised_input_ids"]
+    def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
+        state          = self.sample_selective_state(model, inputs["forget"])
+        masked         = state["effective_mask"]
+        noised         = state["noised_input_ids"]
         attention_mask = state["attention_mask"]
-
-        counterfactual = torch.where(
-            state["query_entity_mask"], self.mask_id, noised
-        )
+        counterfactual = torch.where(state["query_entity_mask"], self.mask_id, noised)
+        
         with torch.no_grad():
-            log_p_cond = self.teacher_log_probs(
-                noised, attention_mask, masked
-            )
-            log_p_cf = self.teacher_log_probs(
-                counterfactual, attention_mask, masked
-            )
+            log_p_cond       = self.teacher_log_probs(noised, attention_mask, masked)
+            log_p_cf         = self.teacher_log_probs(counterfactual, attention_mask, masked)
             forget_positions = state["answer_forget_mask"][masked]
-            log_q, q = self.position_targets(
-                log_p_cond, log_p_cf, forget_positions
-            )
+            log_q, q         = self.position_targets(log_p_cond, log_p_cf, forget_positions)
 
         log_p_student = self._log_probs(state["logits"][masked])
-        masked_kl = (q * (log_q - log_p_student)).sum(-1)
-        per_token = state["logits"][..., 0].float() * 0.0
-        per_token = per_token.masked_scatter(masked, masked_kl)
-        forget_mask = masked & state["answer_forget_mask"]
+        masked_kl     = (q * (log_q - log_p_student)).sum(-1)
+        per_token     = state["logits"][..., 0].float() * 0.0
+        per_token     = per_token.masked_scatter(masked, masked_kl)
+        forget_mask   = masked & state["answer_forget_mask"]
         preserve_mask = masked & ~state["answer_forget_mask"]
-        forget_loss = self._reduce(
-            per_token, forget_mask, torch.ones_like(per_token)
-        )
-        preserve_loss = self._reduce(
-            per_token, preserve_mask, torch.ones_like(per_token)
-        )
-        loss = forget_loss + self.preserve_weight * preserve_loss
+        forget_loss   = self._reduce(per_token, forget_mask, torch.ones_like(per_token))
+        preserve_loss = self._reduce(per_token, preserve_mask, torch.ones_like(per_token))
+        loss          = forget_loss + self.preserve_weight * preserve_loss
         return (loss, state["outputs"]) if return_outputs else loss
