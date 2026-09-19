@@ -1,0 +1,18 @@
+# Single-GPU masked-diffusion training.
+#
+# Reuses the ZeRO-3 config with CPU offload for both optimizer state and
+# parameters, which is what makes a 7B/8B model trainable on one device. Only
+# the process count differs from dlm_config.yaml.
+compute_environment: LOCAL_MACHINE
+deepspeed_config:
+ deepspeed_config_file: configs/accelerate/dlm_zero3_offload_config.json
+ zero3_init_flag: true
+distributed_type: DEEPSPEED
+fsdp_config: {}
+machine_rank: 0
+main_process_ip: null
+main_process_port: null
+main_training_function: main
+num_machines: 1
+num_processes: 1
+use_cpu: false

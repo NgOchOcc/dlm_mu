@@ -1,5 +1,23 @@
 RWKU_SUBJECTS_FILE="${RWKU_SUBJECTS_FILE:-scripts/dlm/rwku/subjects.txt}"
 
+# RWKU runs on a single GPU for both training and evaluation, so the whole
+# pipeline is pinned to one device via GPUS.
+EVAL_ACCEL_1GPU="${EVAL_ACCEL_1GPU:-configs/accelerate/eval_1gpu.yaml}"
+TRAIN_ACCEL_1GPU="${TRAIN_ACCEL_1GPU:-configs/accelerate/dlm_1gpu.yaml}"
+
+# Pin the whole pipeline (training and evaluation) to one device.
+#
+# GPUS may arrive as a list -- either from the caller or from lib.sh's
+# auto-detect -- so narrow it to the first entry and say so, rather than
+# silently using a device the caller did not expect.
+pin_single_gpu() {
+    if [[ "$(ngpus "$GPUS")" -gt 1 ]]; then
+        echo "note: RWKU runs on one GPU; using device ${GPUS%%,*} of '${GPUS}'" >&2
+    fi
+    GPUS="${GPUS%%,*}"
+    [[ -n "$GPUS" ]] || die "no GPU available (GPUS is empty)"
+}
+
 load_subjects() {
     RWKU_SUBJECTS=()
     [[ -f "$RWKU_SUBJECTS_FILE" ]] || die "missing $RWKU_SUBJECTS_FILE"
@@ -30,17 +48,12 @@ rwku_eval() {
     local ckpt=$1 outdir=$2 subject=$3
     mkdir -p "$outdir"
     local port; port=$(free_port "${EVAL_PORT_BASE:-29800}")
-    # The evaluators do not shard data across ranks: every rank recomputes the
-    # whole metric and only rank 0 writes results (evals/base.py:save_logs), so
-    # extra processes just duplicate the work and hold extra model copies.
-    # Default to the first visible GPU; set EVAL_GPUS to override.
-    local egpus="${EVAL_GPUS:-${GPUS%%,*}}"
-    local accel="${EVAL_ACCEL_OVERRIDE:-configs/accelerate/eval_1gpu.yaml}"
-    if [[ -z "${EVAL_ACCEL_OVERRIDE:-}" && "$(ngpus "$egpus")" -gt 1 ]]; then
-        accel="${EVAL_ACCEL}"
-    fi
-    CUDA_VISIBLE_DEVICES=${egpus} accelerate launch \
-        --config_file "${accel}" --num_processes "$(ngpus "$egpus")" \
+    # Single-GPU evaluation. The evaluators do not shard data across ranks --
+    # every rank recomputes the whole metric and only rank 0 writes results
+    # (evals/base.py:save_logs) -- so extra processes only duplicate the work
+    # and hold extra model copies.
+    CUDA_VISIBLE_DEVICES=${GPUS} accelerate launch \
+        --config_file "${EVAL_ACCEL_1GPU}" --num_processes 1 \
         --main_process_port "${port}" \
         src/eval.py \
         model=${MODEL} \

@@ -7,10 +7,13 @@
 #
 # Results land in eval/RWKU/{model}_base/{setting}/{NN_entity}/RWKU_SUMMARY.json
 #
-#   scripts/dlm/rwku/evaluate_base.sh                  # both models, 10 entities
-#   MODELS=llada1.5 scripts/dlm/rwku/evaluate_base.sh  # one model
-#   NUM_SUBJECTS=3 scripts/dlm/rwku/evaluate_base.sh   # first 3 entities only
-#   SETTING=train_v2 scripts/dlm/rwku/evaluate_base.sh # different output folder
+# Runs on ONE GPU, named by GPUS. To use several GPUs, launch several copies
+# with different GPUS and entity subsets.
+#
+#   GPUS=0 scripts/dlm/rwku/evaluate_base.sh                 # both models
+#   GPUS=0 MODELS=llada1.5 scripts/dlm/rwku/evaluate_base.sh # one model
+#   GPUS=0 NUM_SUBJECTS=3 scripts/dlm/rwku/evaluate_base.sh  # first 3 entities
+#   GPUS=0 SETTING=train_v2 scripts/dlm/rwku/evaluate_base.sh
 set -euo pipefail
 cd "$(dirname "$0")/../../.." || exit 1
 source scripts/dlm/lib.sh
@@ -21,6 +24,7 @@ MODELS="${MODELS:-dream llada1.5}"
 
 for model_key in $MODELS; do
     dlm_config "$model_key" "${GPUS}"
+    pin_single_gpu
     load_subjects
     ckpt=$(rwku_base_ckpt)
     echo "=== base eval: ${model_key} (${MODEL}) <- ${ckpt} ==="
@@ -33,7 +37,7 @@ for model_key in $MODELS; do
             echo "--- [$idx/${#RWKU_SUBJECTS[@]}] $subject: exists, skip (OVERWRITE=1 to redo)"
             continue
         fi
-        echo "--- [$idx/${#RWKU_SUBJECTS[@]}] $subject -> $outdir"
+        echo "--- [$idx/${#RWKU_SUBJECTS[@]}] $subject -> gpu ${GPUS} -> $outdir"
         rwku_eval "$ckpt" "$outdir" "$subject"
     done
 done

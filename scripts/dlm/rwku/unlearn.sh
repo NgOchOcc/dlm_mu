@@ -9,11 +9,15 @@
 # next method. Results land in
 #   eval/RWKU/{model}_{Method}/{setting}/{NN_entity}/RWKU_SUMMARY.json
 #
-#   scripts/dlm/rwku/unlearn.sh llada1.5
-#   scripts/dlm/rwku/unlearn.sh dream 0,1,2,3
-#   METHODS=SDU,GA scripts/dlm/rwku/unlearn.sh llada1.5
-#   NUM_SUBJECTS=3 scripts/dlm/rwku/unlearn.sh llada1.5
-#   KEEP_CKPT=1 scripts/dlm/rwku/unlearn.sh llada1.5   # keep the 10 checkpoints
+# Training and evaluation both run on ONE GPU, named by the second argument.
+# To use several GPUs, launch several copies of this script -- one per device --
+# each with its own entity subset (see SUBJECTS / NUM_SUBJECTS).
+#
+#   scripts/dlm/rwku/unlearn.sh llada1.5 0
+#   scripts/dlm/rwku/unlearn.sh dream 2
+#   METHODS=SDU,GA scripts/dlm/rwku/unlearn.sh llada1.5 0
+#   NUM_SUBJECTS=3 scripts/dlm/rwku/unlearn.sh llada1.5 0
+#   KEEP_CKPT=1 scripts/dlm/rwku/unlearn.sh llada1.5 0   # keep the checkpoints
 set -euo pipefail
 cd "$(dirname "$0")/../../.." || exit 1
 source scripts/dlm/lib.sh
@@ -21,6 +25,7 @@ source scripts/dlm/rwku/lib_rwku.sh
 
 MODEL_KEY="${1:-llada1.5}"
 dlm_config "$MODEL_KEY" "${2:-$GPUS}"
+pin_single_gpu
 load_subjects
 
 SETTING="${SETTING:-train_v1}"
@@ -51,7 +56,7 @@ sdu_cache_for() {
     fi
     mkdir -p "$(dirname "$cache")"
     echo "--- precomputing SDU mask cache: $cache" >&2
-    CUDA_VISIBLE_DEVICES="${GPUS%%,*}" python scripts/dlm/sdu_precompute.py \
+    CUDA_VISIBLE_DEVICES=${GPUS} python scripts/dlm/sdu_precompute.py \
         --model-dir "$BASE_CKPT" \
         --dataset-path jinzhuoran/RWKU \
         --dataset-name train_pair_llama3 \
@@ -80,9 +85,10 @@ run_one() {
     fi
 
     assert_gpus
+    pin_single_gpu
     local port; port=$(free_port "${MAIN_PORT:-29600}")
     CUDA_VISIBLE_DEVICES=${GPUS} accelerate launch \
-        --config_file "${UNLEARN_ACCEL}" --num_processes "$(ngpus "$GPUS")" \
+        --config_file "${TRAIN_ACCEL_1GPU}" --num_processes 1 \
         --main_process_port "${port}" \
         src/train.py --config-name=unlearn.yaml \
         experiment="${exp}" \
