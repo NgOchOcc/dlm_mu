@@ -43,13 +43,31 @@ def _build_prompt_ids(tokenizer, template_args, question):
     return torch.tensor(ids, dtype=torch.long)
 
 
+def _gen_args_dict(gen_args):
+    """Mutable plain-dict copy of a generation_args config.
+
+    `dict(DictConfig)` leaves nested values as DictConfig and is easy to confuse
+    with an already-converted dict downstream; to_container gives a fully plain
+    structure that callers can safely `setdefault` into.
+    """
+    from omegaconf import OmegaConf
+
+    if OmegaConf.is_config(gen_args):
+        return OmegaConf.to_container(gen_args, resolve=True)
+    return dict(gen_args)
+
+
 def _generate_texts(model, tokenizer, template_args, questions, gen_args,
                     scheduler_name, right_shift_logits):
     """Greedy MDLM generation; returns the decoded continuation per prompt."""
     from dllm.core.samplers import MDLMSampler, MDLMSamplerConfig
     from omegaconf import OmegaConf
 
-    if hasattr(gen_args, "keys"):
+    # Callers pass either a DictConfig (straight from the metric config) or a
+    # plain dict (when they copied it to apply setdefault). `hasattr(.., "keys")`
+    # is true for both, so test the OmegaConf type instead -- to_container
+    # rejects a plain dict with "Input cfg is not an OmegaConf config object".
+    if OmegaConf.is_config(gen_args):
         gen_args = OmegaConf.to_container(gen_args, resolve=True)
     max_new_tokens = gen_args.get("max_new_tokens", 64)
     cfg = MDLMSamplerConfig(
@@ -96,7 +114,7 @@ def mmlu_accuracy_diffusion(model, **kwargs):
     data = _single_dataset(kwargs)
     batch_size = kwargs.get("batch_size", 8)
     max_samples = kwargs.get("max_samples", 100)
-    gen_args = dict(kwargs.get("generation_args", {}))
+    gen_args = _gen_args_dict(kwargs.get("generation_args", {}))
     gen_args.setdefault("max_new_tokens", 5)
     scheduler_name = kwargs.get("scheduler_name", "LinearAlphaScheduler")
     right_shift_logits = kwargs.get("right_shift_logits", False)
@@ -206,7 +224,7 @@ def triviaqa_em_diffusion(model, **kwargs):
     data = _single_dataset(kwargs)
     batch_size = kwargs.get("batch_size", 8)
     max_samples = kwargs.get("max_samples", None)
-    gen_args = dict(kwargs.get("generation_args", {}))
+    gen_args = _gen_args_dict(kwargs.get("generation_args", {}))
     gen_args.setdefault("max_new_tokens", 64)
     scheduler_name = kwargs.get("scheduler_name", "LinearAlphaScheduler")
     right_shift_logits = kwargs.get("right_shift_logits", False)

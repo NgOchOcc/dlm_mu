@@ -102,7 +102,6 @@ class Evaluator:
                 "template_args": kwargs.get("template_args", None),
             }
             metrics_args = self.eval_cfg.metrics[metric_name]
-            _
             result = metric_fn(
                 model,
                 metric_name=metric_name,
