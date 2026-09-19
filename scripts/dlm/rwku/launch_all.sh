@@ -71,7 +71,7 @@ for method in "${METHOD_LIST[@]}"; do
     gpu="${GPU_POOL[$SLOT]}"
     log="${LOG_DIR}/${MODEL_KEY}_${method}_gpu${gpu}.log"
     echo "--- ${method} -> gpu ${gpu}  (${log})"
-    GPUS="$gpu" METHODS="$method" \
+    GPUS="$gpu" METHODS="$method" NO_SUMMARY=1 \
         bash scripts/dlm/rwku/unlearn.sh "$MODEL_KEY" "$gpu" > "$log" 2>&1 &
     GPU_PID[$SLOT]=$!
     # GPU_PID only remembers the process currently on each device, and a slot is

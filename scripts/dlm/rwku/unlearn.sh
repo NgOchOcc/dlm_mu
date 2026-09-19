@@ -138,5 +138,10 @@ for method in "${METHOD_LIST[@]}"; do
     echo
 done
 
-echo "=== summary ==="
-python3 scripts/dlm/rwku/aggregate.py --setting "$SETTING" || true
+# NO_SUMMARY=1 when several methods run in parallel: aggregate.py reports every
+# method it finds, so a per-method call would print a table of everyone else's
+# half-finished results. The launcher prints one summary once all are done.
+if ! flag_on "${NO_SUMMARY:-0}"; then
+    echo "=== summary ==="
+    python3 scripts/dlm/rwku/aggregate.py --setting "$SETTING" || true
+fi
