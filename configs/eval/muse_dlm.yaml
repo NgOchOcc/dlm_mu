@@ -4,14 +4,16 @@
 #
 # Masked-diffusion (Dream, LLaDA) counterpart of eval/muse.yaml. Reuses the MUSE
 # evaluator and datasets, but the model-dependent metrics use the DLM handlers
-# (rouge_diffusion / extraction_strength_diffusion). privleak is omitted: it
-# relies on the min-k MIA, which has no diffusion handler.
+# (rouge_diffusion). privleak is omitted: it relies on the min-k MIA, which has
+# no diffusion handler. extraction_strength is disabled below (its config file
+# is kept so it can be re-enabled by uncommenting), matching how tofu_dlm.yaml
+# leaves the same metric off by default.
 defaults:
   - muse_dlm_metrics:
     - forget_knowmem_ROUGE
     - retain_knowmem_ROUGE
     - forget_verbmem_ROUGE
-    - extraction_strength
+    # - extraction_strength
 
 handler: MUSEEvaluator
 output_dir: ${paths.output_dir} # set to default eval directory

@@ -354,12 +354,29 @@ def generate_answers_diffusion(
         hit = torch.isin(ids_1d, stop_tensor).nonzero(as_tuple=True)[0]
         return ids_1d[: hit[0]] if hit.numel() > 0 else ids_1d
 
-    # In eval mode (predict_with_generate=True) `input_ids` holds only the
-    # prompt while `labels` holds the entire conversation with NO IGNORE_INDEX
-    # over the prompt span, so we slice by prompt length before trimming --
-    # trimming the raw `labels != IGNORE_INDEX` would cut at the first
-    # terminator inside the prompt itself (e.g. the "<|im_end|>" that closes
-    # Dream's system prompt) and return system-prompt text as the "answer".
+    # The two dataset families disagree on what `labels` holds in eval mode
+    # (predict_with_generate=True), so the response span is recovered
+    # differently for each:
+    #
+    #   QADataset (TOFU/RWKU/MUSE-knowmem): `labels` is the WHOLE conversation
+    #   with no IGNORE_INDEX over the prompt (data/utils.py: "labels = chat_ids
+    #   # contains the entire conversation"), so the prompt must be sliced off
+    #   by length. Trimming the raw `labels != IGNORE_INDEX` would instead cut
+    #   at the first terminator inside the prompt (e.g. the "<|im_end|>" that
+    #   closes Dream's system prompt) and return system-prompt text as the
+    #   "answer".
+    #
+    #   CompletionDataset/PretrainingDataset (MUSE-verbmem): the prompt span is
+    #   ALREADY masked out with IGNORE_INDEX regardless of predict_with_generate
+    #   (preprocess_pretraining_instance always builds
+    #   `[IGNORE_INDEX]*prefix_len + ids[prefix_len:]`), so `labels !=
+    #   IGNORE_INDEX` is exactly the response. Slicing off prompt_len on top of
+    #   that dropped the whole ground truth (prompt_len >> len(response)) and
+    #   produced ground_truth="" -> ROUGE 0.0 for every verbmem sample.
+    #
+    # A leading IGNORE_INDEX distinguishes them: only the masked-prompt layout
+    # starts with one. Right-padding by the collator appends IGNORE_INDEX at the
+    # END for both families, so the leading position is the reliable signal.
     pad_id = tokenizer.pad_token_id
     prompt_lens = [
         int((ids != pad_id).sum()) if pad_id is not None else int(ids.numel())
@@ -368,7 +385,9 @@ def generate_answers_diffusion(
     gt_tokens = []
     for i, label in enumerate(labels):
         non_pad = label[label != IGNORE_INDEX]
-        gt_tokens.append(_trim_at_stop(non_pad[prompt_lens[i] :]))
+        prompt_is_masked = label.numel() > 0 and int(label[0]) == IGNORE_INDEX
+        response = non_pad if prompt_is_masked else non_pad[prompt_lens[i] :]
+        gt_tokens.append(_trim_at_stop(response))
     ground_truths = tokenizer.batch_decode(gt_tokens, skip_special_tokens=True)
     ground_truths = [gt.strip() for gt in ground_truths]
 
