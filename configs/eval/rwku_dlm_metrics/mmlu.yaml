@@ -5,7 +5,7 @@ defaults:
   - ../../generation@generation_args: dlm_rwku_short
 
 handler: mmlu_accuracy_diffusion
-batch_size: ${eval.rwku_dlm.batch_size}
+batch_size: ${eval.rwku_dlm.mmlu_batch_size}
 scheduler_name: ${eval.rwku_dlm.scheduler_name}
 right_shift_logits: ${eval.rwku_dlm.right_shift_logits}
 max_samples: ${eval.rwku_dlm.mmlu_max_samples}

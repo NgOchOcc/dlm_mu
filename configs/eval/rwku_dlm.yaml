@@ -26,7 +26,15 @@ handler: RWKUEvaluator
 output_dir: ${paths.output_dir}
 metrics: {}
 overwrite: false
-batch_size: 32
+# Masked-diffusion generation holds the whole sequence in memory across every
+# denoising step, so eval batches cost far more than an autoregressive run of
+# the same size. 8 fits a 7B/8B model on 80GB; drop to 4 or 2 on smaller cards
+# (the scripts expose this as EVAL_BS).
+batch_size: 8
+
+# MMLU prompts are 5-shot and much longer than the other probes, so they get a
+# smaller batch of their own.
+mmlu_batch_size: 4
 
 # Per-entity evaluation. RWKU reports results per target entity (MDU averages
 # over the first 10), so the forget_* and neighbor_* probes are filtered to a

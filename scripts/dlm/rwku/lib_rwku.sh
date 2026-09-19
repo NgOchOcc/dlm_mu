@@ -30,9 +30,17 @@ rwku_eval() {
     local ckpt=$1 outdir=$2 subject=$3
     mkdir -p "$outdir"
     local port; port=$(free_port "${EVAL_PORT_BASE:-29800}")
-    local egpus="${EVAL_GPUS:-$GPUS}"
+    # The evaluators do not shard data across ranks: every rank recomputes the
+    # whole metric and only rank 0 writes results (evals/base.py:save_logs), so
+    # extra processes just duplicate the work and hold extra model copies.
+    # Default to the first visible GPU; set EVAL_GPUS to override.
+    local egpus="${EVAL_GPUS:-${GPUS%%,*}}"
+    local accel="${EVAL_ACCEL_OVERRIDE:-configs/accelerate/eval_1gpu.yaml}"
+    if [[ -z "${EVAL_ACCEL_OVERRIDE:-}" && "$(ngpus "$egpus")" -gt 1 ]]; then
+        accel="${EVAL_ACCEL}"
+    fi
     CUDA_VISIBLE_DEVICES=${egpus} accelerate launch \
-        --config_file "${EVAL_ACCEL}" --num_processes "$(ngpus "$egpus")" \
+        --config_file "${accel}" --num_processes "$(ngpus "$egpus")" \
         --main_process_port "${port}" \
         src/eval.py \
         model=${MODEL} \
@@ -41,6 +49,8 @@ rwku_eval() {
         eval=rwku_dlm \
         eval.rwku_dlm.overwrite=true \
         eval.rwku_dlm.right_shift_logits=${RIGHT_SHIFT} \
+        eval.rwku_dlm.batch_size=${EVAL_BS:-8} \
+        eval.rwku_dlm.mmlu_batch_size=${MMLU_BS:-$(( ${EVAL_BS:-8} < 4 ? ${EVAL_BS:-8} : 4 ))} \
         eval.rwku_dlm.target_subject="\"${subject}\"" \
         paths.output_dir="${outdir}" \
         task_name="$(basename "$outdir")"

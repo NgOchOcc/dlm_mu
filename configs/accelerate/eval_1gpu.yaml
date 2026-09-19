@@ -1,0 +1,16 @@
+# Single-process evaluation.
+#
+# The RWKU/DLM evaluators do NOT shard data across ranks -- every rank runs the
+# full metric and only rank 0 writes the results (see evals/base.py:save_logs),
+# so a 4-process launch does the same work four times while holding four full
+# copies of the model. One process is both faster and uses a quarter of the
+# memory; use this when evaluation hits OOM.
+compute_environment: LOCAL_MACHINE
+distributed_type: "NO"
+mixed_precision: bf16
+num_machines: 1
+num_processes: 1
+machine_rank: 0
+main_process_ip: null
+main_process_port: null
+use_cpu: false
