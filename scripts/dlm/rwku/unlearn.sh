@@ -17,7 +17,7 @@
 #   scripts/dlm/rwku/unlearn.sh dream 2
 #   METHODS=SDU,GA scripts/dlm/rwku/unlearn.sh llada1.5 0
 #   NUM_SUBJECTS=3 scripts/dlm/rwku/unlearn.sh llada1.5 0
-#   KEEP_CKPT=1 scripts/dlm/rwku/unlearn.sh llada1.5 0   # keep the checkpoints
+#   DELETE_CKPT=1 scripts/dlm/rwku/unlearn.sh llada1.5 0  # free ckpts after eval
 set -euo pipefail
 cd "$(dirname "$0")/../../.." || exit 1
 source scripts/dlm/lib.sh
@@ -106,6 +106,7 @@ run_one() {
         trainer.args.eval_strategy=no \
         trainer.args.do_eval=false \
         trainer.args.eval_on_start=false \
+        eval.rwku_dlm.target_subject="\"${subject}\"" \
         trainer.method_args.right_shift_logits=${RIGHT_SHIFT} \
         trainer.method_args.loss_weight_type="\"${LOSS_WEIGHT}\"" \
         eval.rwku_dlm.right_shift_logits=${RIGHT_SHIFT} \
@@ -120,66 +121,52 @@ echo "  setting  : ${SETTING}  (${EPOCHS} epochs, lr ${LR}, bs ${BS})"
 echo "  runs     : $(( ${#METHOD_LIST[@]} * ${#RWKU_SUBJECTS[@]} ))"
 echo
 
-# Phase 1: train every checkpoint. Phase 2: evaluate them all.
+# Each entity is trained and then evaluated before moving to the next, so only
+# one checkpoint is being produced at a time. Note this is unrelated to the
+# in-training evaluation that `eval_strategy=no` disables above: that one ran
+# the whole RWKU suite after every epoch, unfiltered.
 #
-# Splitting the phases keeps the GPU on one kind of work at a time and leaves
-# every checkpoint on disk until its evaluation has succeeded -- with the
-# interleaved version, a crash during evaluation lost the checkpoint too.
-# EVAL=0 stops after training; EVAL_ONLY=1 evaluates checkpoints already on disk.
-TRAINED_TASKS=()
-TRAINED_SUBJECTS=()
-TRAINED_OUTDIRS=()
+# EVAL=0 trains without evaluating; EVAL_ONLY=1 evaluates checkpoints already
+# on disk without retraining.
+for method in "${METHOD_LIST[@]}"; do
+    echo "######## ${method} ########"
+    idx=0
+    for subject in "${RWKU_SUBJECTS[@]}"; do
+        idx=$((idx + 1))
+        outdir=$(eval_dir "${MODEL_KEY}_${method}" "$SETTING" "$idx" "$subject")
+        task="rwku_${MODEL}_${method}_$(slug "$subject")"
+        label="[$idx/${#RWKU_SUBJECTS[@]}] ${method} / ${subject}"
 
-if ! flag_on "${EVAL_ONLY:-0}"; then
-    for method in "${METHOD_LIST[@]}"; do
-        echo "######## train: ${method} ########"
-        idx=0
-        for subject in "${RWKU_SUBJECTS[@]}"; do
-            idx=$((idx + 1))
-            outdir=$(eval_dir "${MODEL_KEY}_${method}" "$SETTING" "$idx" "$subject")
-            task="rwku_${MODEL}_${method}_$(slug "$subject")"
-            if [[ -f "$outdir/RWKU_SUMMARY.json" ]] && ! flag_on "${OVERWRITE:-0}"; then
-                echo "--- [$idx/${#RWKU_SUBJECTS[@]}] $subject: evaluated already, skip"
+        if [[ -f "$outdir/RWKU_SUMMARY.json" ]] && ! flag_on "${OVERWRITE:-0}"; then
+            echo "--- ${label}: evaluated already, skip"
+            continue
+        fi
+
+        if flag_on "${EVAL_ONLY:-0}"; then
+            if [[ ! -d "saves/unlearn/${task}" ]]; then
+                echo "--- ${label}: no checkpoint, skip"
                 continue
             fi
-            if [[ -d "saves/unlearn/${task}" ]] && ! flag_on "${OVERWRITE:-0}"; then
-                echo "--- [$idx/${#RWKU_SUBJECTS[@]}] $subject: checkpoint exists, skip training"
-            else
-                echo "--- [$idx/${#RWKU_SUBJECTS[@]}] ${method} / ${subject}"
-                run_one "$method" "$subject" "$task"
+        elif [[ -d "saves/unlearn/${task}" ]] && ! flag_on "${OVERWRITE:-0}"; then
+            echo "--- ${label}: checkpoint exists, skip training"
+        else
+            echo "--- ${label}: train"
+            run_one "$method" "$subject" "$task"
+        fi
+
+        if flag_on "${EVAL:-1}"; then
+            echo "--- ${label}: eval"
+            rwku_eval "saves/unlearn/${task}" "$outdir" "$subject"
+            # Checkpoints are kept by default. Every entity trains its own, so
+            # they add up quickly (~15GB each); remove them yourself once you no
+            # longer need to re-evaluate, e.g. rm -rf saves/unlearn/rwku_*.
+            if flag_on "${DELETE_CKPT:-0}"; then
+                rm -rf "saves/unlearn/${task}"
             fi
-            TRAINED_TASKS+=("$task")
-            TRAINED_SUBJECTS+=("$subject")
-            TRAINED_OUTDIRS+=("$outdir")
-        done
-        echo
-    done
-fi
-
-if flag_on "${EVAL_ONLY:-0}"; then
-    for method in "${METHOD_LIST[@]}"; do
-        idx=0
-        for subject in "${RWKU_SUBJECTS[@]}"; do
-            idx=$((idx + 1))
-            task="rwku_${MODEL}_${method}_$(slug "$subject")"
-            [[ -d "saves/unlearn/${task}" ]] || continue
-            TRAINED_TASKS+=("$task")
-            TRAINED_SUBJECTS+=("$subject")
-            TRAINED_OUTDIRS+=("$(eval_dir "${MODEL_KEY}_${method}" "$SETTING" "$idx" "$subject")")
-        done
-    done
-fi
-
-if flag_on "${EVAL:-1}" && (( ${#TRAINED_TASKS[@]} > 0 )); then
-    echo "######## evaluate: ${#TRAINED_TASKS[@]} checkpoint(s) ########"
-    for i in "${!TRAINED_TASKS[@]}"; do
-        task="${TRAINED_TASKS[$i]}"
-        echo "--- [$((i + 1))/${#TRAINED_TASKS[@]}] ${TRAINED_SUBJECTS[$i]}"
-        rwku_eval "saves/unlearn/${task}" "${TRAINED_OUTDIRS[$i]}" "${TRAINED_SUBJECTS[$i]}"
-        flag_on "${KEEP_CKPT:-0}" || rm -rf "saves/unlearn/${task}"
+        fi
     done
     echo
-fi
+done
 
 # NO_SUMMARY=1 when several methods run in parallel: aggregate.py reports every
 # method it finds, so a per-method call would print a table of everyone else's
