@@ -1,0 +1,24 @@
+# RWKU forget training set for PER-ENTITY unlearning (matches MDU's setting).
+#
+# `train_pair_llama3` holds, for each target entity, a biography prompt and a
+# `response` list of two candidate completions: response[0] is the fabricated /
+# negative variant and response[1] is the faithful positive one. MDU trains on
+# the positive member, so `answer_index: 1` selects it (without this the list
+# answer would be treated as multi-reference eval data).
+#
+# `filter_value` is the target entity and MUST be set per run, e.g.
+#   +data/datasets@data.forget=RWKU_forget_pair \
+#   data.forget.RWKU_forget_pair.args.hf_args.filter_value="Stephen King"
+RWKU_forget_pair:
+  handler: QADataset
+  args:
+    hf_args:
+      path: "jinzhuoran/RWKU"
+      name: "train_pair_llama3"
+      split: "train"
+      filter_column: "subject"
+      filter_value: ???
+    question_key: "prompt"
+    answer_key: "response"
+    answer_index: 1
+    max_length: 512

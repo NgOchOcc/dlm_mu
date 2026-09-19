@@ -1,0 +1,37 @@
+# @package _global_
+# Entity-counterfactual selective unlearning (SDU) on RWKU, per-entity.
+#
+# Same per-entity, forget-only, no-SFT setting as unlearn/rwku/dlm.yaml, but the
+# query-leak mask comes from the offline Monte Carlo occlusion cache built by
+# scripts/dlm/sdu_precompute.py, so it needs the index-emitting collator.
+#
+# The cache is keyed by dataset index, which is assigned after the subject
+# filter — so the cache MUST be precomputed with the same filter_value as the
+# run that consumes it.
+defaults:
+  - override /model: LLaDA-8B-Instruct
+  - override /trainer: DiffusionSDU
+  - override /data: unlearn
+  - override /data/datasets@data.forget: RWKU_forget_pair
+  - override /data/datasets@data.retain: null
+  - override /collator: DataCollatorForSupervisedDatasetwithIndex
+  - override /eval: rwku_dlm
+
+data:
+  anchor: forget
+  forget:
+    RWKU_forget_pair: {}
+
+eval:
+  rwku_dlm:
+    overwrite: true
+
+trainer:
+  args:
+    per_device_train_batch_size: 4
+    warmup_epochs: 1.0
+    learning_rate: 1e-5
+    weight_decay: 0.01
+    num_train_epochs: 3
+
+task_name: ???

@@ -15,6 +15,7 @@ class QADataset(Dataset):
         few_shot_dataset_hf_args=None,
         max_length=512,
         predict_with_generate=False,
+        answer_index=None,
     ):
         super(QADataset, self).__init__()
         self.tokenizer = tokenizer
@@ -34,6 +35,11 @@ class QADataset(Dataset):
         self.question_key = question_key
         self.answer_key = answer_key
         self.predict_with_generate = predict_with_generate
+        # When the answer column holds a list of candidates (e.g. RWKU
+        # `train_pair_llama3.response` = [negative, positive]), `answer_index`
+        # picks one so training sees a single string. Left None, a list answer
+        # keeps the multi-reference eval behaviour in `__getitem__`.
+        self.answer_index = answer_index
 
     def __len__(self):
         return len(self.data)
@@ -64,6 +70,8 @@ class QADataset(Dataset):
         question = self.data[idx][self.question_key]
         answer = self.data[idx][self.answer_key]
         index = self.data[idx]["index"]
+        if self.answer_index is not None and isinstance(answer, (list, tuple)):
+            answer = answer[self.answer_index]
         if isinstance(answer, str):
             item = self._process_sample(question=question, answer=answer, index=index)
         elif isinstance(answer, list):

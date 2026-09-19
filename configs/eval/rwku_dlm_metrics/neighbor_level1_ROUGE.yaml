@@ -15,3 +15,11 @@ collators:
   DataCollatorForSupervisedDataset:
     args:
       padding_side: right
+
+# Restrict to one target entity when eval.rwku_dlm.target_subject is set.
+datasets:
+  RWKU_neighbor_level1:
+    args:
+      hf_args:
+        filter_column: subject
+        filter_value: ${eval.rwku_dlm.target_subject}

@@ -1,17 +1,27 @@
 # @package _global_
 # Masked-diffusion (LLaDA/Dream) unlearning on RWKU (jinzhuoran/RWKU).
-# RWKU is a *forget-only* benchmark — it ships no entity-level retain training
-# set — so this defaults to DiffusionGA with no retain (matches the MDU
-# forget-only, alpha=0 setting). Whole-corpus unlearning: the forget target is
-# the original passage corpus for all target entities (train_original_passage).
 #
-# Retain-based trainers (GradDiff/NPO/SimNPO/WGA) additionally need a retain
-# corpus; supply one via `+data/datasets@data.retain=<cfg>` on the CLI if used.
+# PER-ENTITY setting, matching the MDU reference (configs/mdu_rwku.yaml,
+# run_main.sh `rwku_dream`): one unlearning run per target entity, results
+# averaged over the first 10. RWKU's eval is itself per-subject — every forget /
+# neighbor probe is filtered by `subject` — so a checkpoint that forgot all
+# entities at once could not be scored the way RWKU reports results.
+#
+# RWKU is off-the-shelf: real-world entities are already in pretraining, so
+# there is NO SFT stage. Unlearning starts from the base instruct model.
+#
+# It is also forget-only (no entity-level retain corpus), matching MDU's
+# `--alpha 0.0 --no_retain`. Retain-based trainers (GD/NPO/SimNPO/WGA) run with
+# the retain term disabled.
+#
+# The target entity MUST be supplied per run:
+#   data.forget.RWKU_forget_pair.args.hf_args.filter_value="Stephen King" \
+#   eval.rwku_dlm.target_subject="Stephen King"
 defaults:
   - override /model: LLaDA-8B-Instruct
   - override /trainer: DiffusionGA
   - override /data: unlearn
-  - override /data/datasets@data.forget: RWKU_forget_train
+  - override /data/datasets@data.forget: RWKU_forget_pair
   - override /data/datasets@data.retain: null
   - override /eval: rwku_dlm
 
@@ -23,18 +33,19 @@ defaults:
 data:
   anchor: forget
   forget:
-    RWKU_forget_train: {}
+    RWKU_forget_pair: {}
 
 eval:
   rwku_dlm:
     overwrite: true
 
+# Matches MDU: EPO=3, LR=1e-5, per-device batch 4.
 trainer:
   args:
-    per_device_train_batch_size: 1
+    per_device_train_batch_size: 4
     warmup_epochs: 1.0
     learning_rate: 1e-5
     weight_decay: 0.01
-    num_train_epochs: 5
+    num_train_epochs: 3
 
 task_name: ???

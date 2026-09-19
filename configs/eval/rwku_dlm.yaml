@@ -28,6 +28,13 @@ metrics: {}
 overwrite: false
 batch_size: 32
 
+# Per-entity evaluation. RWKU reports results per target entity (MDU averages
+# over the first 10), so the forget_* and neighbor_* probes are filtered to a
+# single `subject`. Leave null to score the full test sets instead. The utility
+# metrics (mmlu / truthfulqa / triviaqa) are entity-independent and never
+# filtered.
+target_subject: null
+
 # Diffusion-specific knobs consumed by the DLM metric handlers.
 scheduler_name: LinearAlphaScheduler
 right_shift_logits: False  # set True for Dream

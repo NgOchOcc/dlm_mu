@@ -9,8 +9,32 @@ IGNORE_INDEX = -100  # TODO put in common constants
 logger = logging.getLogger("data")
 
 
-def load_hf_dataset(path, **kwargs):
+def load_hf_dataset(path, filter_column=None, filter_value=None, **kwargs):
+    """Load a HF dataset, optionally keeping only rows matching a column value.
+
+    `filter_column`/`filter_value` support per-entity benchmarks such as RWKU,
+    where every split carries a `subject` column and each unlearning run targets
+    a single entity. `filter_value` may be a scalar or a list of accepted
+    values. Raises if the filter matches nothing, so a typo in an entity name
+    fails loudly instead of silently training on an empty set.
+    """
     dataset = datasets.load_dataset(path, **kwargs)
+    # A null `filter_value` means "no filtering": configs wire `filter_column`
+    # in statically and leave the value unset (e.g. eval.rwku_dlm.target_subject
+    # = null) to evaluate the full test set.
+    if filter_column is None or filter_value is None:
+        return dataset
+    accepted = set(filter_value if isinstance(filter_value, (list, tuple)) else [filter_value])
+    if filter_column not in dataset.column_names:
+        raise ValueError(
+            f"filter_column '{filter_column}' not in {path} columns {dataset.column_names}"
+        )
+    dataset = dataset.filter(lambda row: row[filter_column] in accepted)
+    if len(dataset) == 0:
+        raise ValueError(
+            f"filter {filter_column}={sorted(accepted)} matched 0 rows in {path}"
+        )
+    logger.info(f"{path}: filtered to {len(dataset)} rows where {filter_column} in {sorted(accepted)}")
     return dataset
 
 

@@ -73,6 +73,9 @@ def main():
     )
     ap.add_argument("--question-key", default="question")
     ap.add_argument("--answer-key", default="answer")
+    ap.add_argument("--filter-column", default=None)
+    ap.add_argument("--filter-value", default=None)
+    ap.add_argument("--answer-index", type=int, default=None)
     ap.add_argument("--start-index", type=int, default=0)
     ap.add_argument("--num-samples", type=int, default=None, help="default: whole split")
     ap.add_argument("--num-mc-trials", type=int, default=32)
@@ -99,12 +102,21 @@ def main():
     mask_id = tokenizer.mask_token_id
     vocab_size = len(tokenizer)
 
+    # The filter must match the one used at training time: the cache is keyed by
+    # the dataset index, which is assigned AFTER filtering, so precomputing on
+    # the unfiltered split would misalign every entry.
+    hf_args = {"name": args.dataset_name, "split": args.split, "path": args.dataset_path}
+    if args.filter_column is not None and args.filter_value is not None:
+        hf_args["filter_column"] = args.filter_column
+        hf_args["filter_value"] = args.filter_value
+
     dataset = QADataset(
-        hf_args={"name": args.dataset_name, "split": args.split, "path": args.dataset_path},
+        hf_args=hf_args,
         template_args={"apply_chat_template": True, "system_prompt": None},
         tokenizer=tokenizer,
         question_key=args.question_key,
         answer_key=args.answer_key,
+        answer_index=args.answer_index,
         max_length=args.max_length,
     )
 
@@ -128,6 +140,9 @@ def main():
             "dataset_path": args.dataset_path,
             "dataset_name": args.dataset_name,
             "split": args.split,
+            "filter_column": args.filter_column,
+            "filter_value": args.filter_value,
+            "answer_index": args.answer_index,
             "k_percent_query": args.k_percent_query,
             "entity_boost": args.entity_boost,
             "num_mc_trials": args.num_mc_trials,

@@ -1,8 +1,13 @@
-# RWKU forget training corpus: the original passages describing the target
-# entities (train_original_passage). Whole-corpus unlearning — forgets all
-# target subjects at once. Chunked into fixed-length windows by
-# PretrainingDataset. For per-subject unlearning, pre-filter this HF config by
-# `subject` into a local file and point hf_args at it.
+# RWKU whole-corpus forget set: the original passages describing the target
+# entities (train_original_passage), chunked by PretrainingDataset.
+#
+# NOT used by the default RWKU pipeline, which is per-entity (see
+# RWKU_forget_pair.yaml and configs/experiment/unlearn/rwku/dlm.yaml) to match
+# MDU and RWKU's own per-subject evaluation. Kept for whole-corpus ablations:
+#   +data/datasets@data.forget=RWKU_forget_train
+# It carries a `subject` column, so a single entity can also be selected with
+#   data.forget.RWKU_forget_train.args.hf_args.filter_column=subject \
+#   data.forget.RWKU_forget_train.args.hf_args.filter_value='"Stephen King"'
 RWKU_forget_train:
   handler: PretrainingDataset
   args:
