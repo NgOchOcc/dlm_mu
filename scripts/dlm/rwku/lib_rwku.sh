@@ -5,6 +5,34 @@ RWKU_SUBJECTS_FILE="${RWKU_SUBJECTS_FILE:-scripts/dlm/rwku/subjects.txt}"
 EVAL_ACCEL_1GPU="${EVAL_ACCEL_1GPU:-configs/accelerate/eval_1gpu.yaml}"
 TRAIN_ACCEL_1GPU="${TRAIN_ACCEL_1GPU:-configs/accelerate/dlm_1gpu.yaml}"
 
+# Distinct port ranges per GPU.
+#
+# free_port only checks whether something is already listening, so parallel
+# launches that all start probing at the same base pick the same port: with four
+# processes starting together, every one of them sees 29600 free. Offsetting the
+# base by device index keeps the ranges disjoint from the start.
+#
+# The stride must leave room for free_port's own probing, which steps by 10 --
+# 200 gives each device 20 retries before it could reach the next device's base.
+# Training and evaluation are interleaved within a device's block rather than
+# given separate bases: with separate bases, enough devices would push the
+# training range into the evaluation one (device 5's training base would land on
+# device 0's evaluation base).
+PORT_STRIDE="${PORT_STRIDE:-200}"
+
+port_base() {
+    local kind=$1 dev base off
+    dev="${GPUS%%,*}"
+    [[ "$dev" =~ ^[0-9]+$ ]] || dev=0
+    base="${RWKU_PORT_BASE:-29000}"
+    case "$kind" in
+        train) off=0 ;;
+        eval)  off=100 ;;
+        *) die "port_base: unknown kind '$kind'" ;;
+    esac
+    echo $(( base + dev * PORT_STRIDE + off ))
+}
+
 # Pin the whole pipeline (training and evaluation) to one device.
 #
 # GPUS may arrive as a list -- either from the caller or from lib.sh's
@@ -47,7 +75,7 @@ eval_dir() {
 rwku_eval() {
     local ckpt=$1 outdir=$2 subject=$3
     mkdir -p "$outdir"
-    local port; port=$(free_port "${EVAL_PORT_BASE:-29800}")
+    local port; port=$(free_port "$(port_base eval)")
     # Single-GPU evaluation. The evaluators do not shard data across ranks --
     # every rank recomputes the whole metric and only rank 0 writes results
     # (evals/base.py:save_logs) -- so extra processes only duplicate the work

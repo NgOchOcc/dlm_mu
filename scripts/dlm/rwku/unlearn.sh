@@ -86,7 +86,7 @@ run_one() {
 
     assert_gpus
     pin_single_gpu
-    local port; port=$(free_port "${MAIN_PORT:-29600}")
+    local port; port=$(free_port "$(port_base train)")
     CUDA_VISIBLE_DEVICES=${GPUS} accelerate launch \
         --config_file "${TRAIN_ACCEL_1GPU}" --num_processes 1 \
         --main_process_port "${port}" \
