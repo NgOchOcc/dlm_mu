@@ -3,10 +3,6 @@ import json
 import re
 from pathlib import Path
 
-# (metric key fragment, direction) -- direction is what "better" means after
-# unlearning: forget probes should drop, everything else should hold.
-LOWER_IS_BETTER = ("forget_level1", "forget_level2", "forget_level3")
-
 ORDER = [
     "forget_level1_ROUGE",
     "forget_level2_ROUGE",
@@ -79,8 +75,12 @@ def main():
                 print(f"  {entity:<{width-2}}{'':>3}  " + "  ".join(cells))
 
     print()
-    print("lower is better: " + ", ".join(LOWER_IS_BETTER))
-    print("higher is better: neighbor_*, mmlu, truthfulqa_mc1, triviaqa_em")
+    lower = [m for m in metrics if m.startswith("forget_level")]
+    higher = [m for m in metrics if m not in lower]
+    if lower:
+        print("lower is better: " + ", ".join(lower))
+    if higher:
+        print("higher is better: " + ", ".join(higher))
     incomplete = {k: len(v) for k, v in runs.items() if len(v) < 10}
     if incomplete:
         print("incomplete (fewer than 10 entities): "

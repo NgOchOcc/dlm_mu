@@ -19,22 +19,23 @@ defaults:
     - neighbor_level1_ROUGE
     - neighbor_level2_ROUGE
     - mmlu
-    - truthfulqa_mc1
-    - triviaqa_em
+    # TruthfulQA and TriviaQA are disabled: MMLU alone stands in for general
+    # utility here. Re-enable by uncommenting (their metric configs are kept).
+    # - truthfulqa_mc1
+    # - triviaqa_em
 
 handler: RWKUEvaluator
 output_dir: ${paths.output_dir}
 metrics: {}
 overwrite: false
-# Masked-diffusion generation holds the whole sequence in memory across every
-# denoising step, so eval batches cost far more than an autoregressive run of
-# the same size. 8 fits a 7B/8B model on 80GB; drop to 4 or 2 on smaller cards
-# (the scripts expose this as EVAL_BS).
-batch_size: 8
+# Evaluation runs one process on one GPU (the metrics do not shard across
+# ranks), so a whole device is available for the batch. Lower via EVAL_BS if it
+# does not fit.
+batch_size: 16
 
-# MMLU prompts are 5-shot and much longer than the other probes, so they get a
-# smaller batch of their own.
-mmlu_batch_size: 4
+# MMLU prompts are 5-shot and several times longer than the other probes, so
+# they get a smaller batch of their own.
+mmlu_batch_size: 8
 
 # Per-entity evaluation. RWKU reports results per target entity (MDU averages
 # over the first 10), so the forget_* and neighbor_* probes are filtered to a
@@ -47,7 +48,9 @@ target_subject: null
 scheduler_name: LinearAlphaScheduler
 right_shift_logits: False  # set True for Dream
 
-# Utility subsampling (the RWKU utility configs are large: MMLU 34k, TruthfulQA
-# 10k, TriviaQA 20k). Matches the MDU reference (MMLU capped at 100).
+# Utility subsampling, applied after the per-entity subject filter. MMLU is
+# capped at 100 per entity, matching the reference. utility_max_samples only
+# affects TruthfulQA/TriviaQA, which are disabled above -- it is kept so those
+# metrics still resolve if re-enabled.
 mmlu_max_samples: 100
-utility_max_samples: 500
+utility_max_samples: null

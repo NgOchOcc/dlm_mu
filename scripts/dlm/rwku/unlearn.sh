@@ -29,7 +29,7 @@ pin_single_gpu
 load_subjects
 
 SETTING="${SETTING:-train_v1}"
-EPOCHS="${UNLEARN_EPOCHS:-3}"
+EPOCHS="${UNLEARN_EPOCHS:-2}"
 LR="${UNLEARN_LR:-1e-5}"
 BS="${UNLEARN_BS:-4}"
 ACCUM="${UNLEARN_ACCUM:-8}"
@@ -103,6 +103,7 @@ run_one() {
         trainer.args.save_strategy=no \
         trainer.args.ddp_find_unused_parameters=true \
         trainer.args.gradient_checkpointing=${GRAD_CKPT} \
+        trainer.args.eval_strategy=no \
         trainer.args.do_eval=false \
         trainer.args.eval_on_start=false \
         trainer.method_args.right_shift_logits=${RIGHT_SHIFT} \
@@ -119,24 +120,66 @@ echo "  setting  : ${SETTING}  (${EPOCHS} epochs, lr ${LR}, bs ${BS})"
 echo "  runs     : $(( ${#METHOD_LIST[@]} * ${#RWKU_SUBJECTS[@]} ))"
 echo
 
-for method in "${METHOD_LIST[@]}"; do
-    echo "######## ${method} ########"
-    idx=0
-    for subject in "${RWKU_SUBJECTS[@]}"; do
-        idx=$((idx + 1))
-        outdir=$(eval_dir "${MODEL_KEY}_${method}" "$SETTING" "$idx" "$subject")
-        if [[ -f "$outdir/RWKU_SUMMARY.json" ]] && ! flag_on "${OVERWRITE:-0}"; then
-            echo "--- [$idx/${#RWKU_SUBJECTS[@]}] $subject: exists, skip (OVERWRITE=1 to redo)"
-            continue
-        fi
-        task="rwku_${MODEL}_${method}_$(slug "$subject")"
-        echo "--- [$idx/${#RWKU_SUBJECTS[@]}] ${method} / ${subject}"
-        run_one "$method" "$subject" "$task"
-        rwku_eval "saves/unlearn/${task}" "$outdir" "$subject"
+# Phase 1: train every checkpoint. Phase 2: evaluate them all.
+#
+# Splitting the phases keeps the GPU on one kind of work at a time and leaves
+# every checkpoint on disk until its evaluation has succeeded -- with the
+# interleaved version, a crash during evaluation lost the checkpoint too.
+# EVAL=0 stops after training; EVAL_ONLY=1 evaluates checkpoints already on disk.
+TRAINED_TASKS=()
+TRAINED_SUBJECTS=()
+TRAINED_OUTDIRS=()
+
+if ! flag_on "${EVAL_ONLY:-0}"; then
+    for method in "${METHOD_LIST[@]}"; do
+        echo "######## train: ${method} ########"
+        idx=0
+        for subject in "${RWKU_SUBJECTS[@]}"; do
+            idx=$((idx + 1))
+            outdir=$(eval_dir "${MODEL_KEY}_${method}" "$SETTING" "$idx" "$subject")
+            task="rwku_${MODEL}_${method}_$(slug "$subject")"
+            if [[ -f "$outdir/RWKU_SUMMARY.json" ]] && ! flag_on "${OVERWRITE:-0}"; then
+                echo "--- [$idx/${#RWKU_SUBJECTS[@]}] $subject: evaluated already, skip"
+                continue
+            fi
+            if [[ -d "saves/unlearn/${task}" ]] && ! flag_on "${OVERWRITE:-0}"; then
+                echo "--- [$idx/${#RWKU_SUBJECTS[@]}] $subject: checkpoint exists, skip training"
+            else
+                echo "--- [$idx/${#RWKU_SUBJECTS[@]}] ${method} / ${subject}"
+                run_one "$method" "$subject" "$task"
+            fi
+            TRAINED_TASKS+=("$task")
+            TRAINED_SUBJECTS+=("$subject")
+            TRAINED_OUTDIRS+=("$outdir")
+        done
+        echo
+    done
+fi
+
+if flag_on "${EVAL_ONLY:-0}"; then
+    for method in "${METHOD_LIST[@]}"; do
+        idx=0
+        for subject in "${RWKU_SUBJECTS[@]}"; do
+            idx=$((idx + 1))
+            task="rwku_${MODEL}_${method}_$(slug "$subject")"
+            [[ -d "saves/unlearn/${task}" ]] || continue
+            TRAINED_TASKS+=("$task")
+            TRAINED_SUBJECTS+=("$subject")
+            TRAINED_OUTDIRS+=("$(eval_dir "${MODEL_KEY}_${method}" "$SETTING" "$idx" "$subject")")
+        done
+    done
+fi
+
+if flag_on "${EVAL:-1}" && (( ${#TRAINED_TASKS[@]} > 0 )); then
+    echo "######## evaluate: ${#TRAINED_TASKS[@]} checkpoint(s) ########"
+    for i in "${!TRAINED_TASKS[@]}"; do
+        task="${TRAINED_TASKS[$i]}"
+        echo "--- [$((i + 1))/${#TRAINED_TASKS[@]}] ${TRAINED_SUBJECTS[$i]}"
+        rwku_eval "saves/unlearn/${task}" "${TRAINED_OUTDIRS[$i]}" "${TRAINED_SUBJECTS[$i]}"
         flag_on "${KEEP_CKPT:-0}" || rm -rf "saves/unlearn/${task}"
     done
     echo
-done
+fi
 
 # NO_SUMMARY=1 when several methods run in parallel: aggregate.py reports every
 # method it finds, so a per-method call would print a table of everyone else's

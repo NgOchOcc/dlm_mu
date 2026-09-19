@@ -90,8 +90,10 @@ rwku_eval() {
         eval=rwku_dlm \
         eval.rwku_dlm.overwrite=true \
         eval.rwku_dlm.right_shift_logits=${RIGHT_SHIFT} \
-        eval.rwku_dlm.batch_size=${EVAL_BS:-8} \
-        eval.rwku_dlm.mmlu_batch_size=${MMLU_BS:-$(( ${EVAL_BS:-8} < 4 ? ${EVAL_BS:-8} : 4 ))} \
+        eval.rwku_dlm.batch_size=${EVAL_BS:-16} \
+        eval.rwku_dlm.mmlu_batch_size=${MMLU_BS:-$(( ${EVAL_BS:-16} < 8 ? ${EVAL_BS:-16} : 8 ))} \
+        eval.rwku_dlm.mmlu_max_samples=${MMLU_MAX:-100} \
+        eval.rwku_dlm.utility_max_samples=${UTILITY_MAX:-null} \
         eval.rwku_dlm.target_subject="\"${subject}\"" \
         paths.output_dir="${outdir}" \
         task_name="$(basename "$outdir")"

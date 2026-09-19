@@ -7,3 +7,14 @@ handler: truthfulqa_mc1_diffusion
 batch_size: ${eval.rwku_dlm.batch_size}
 right_shift_logits: ${eval.rwku_dlm.right_shift_logits}
 max_samples: ${eval.rwku_dlm.utility_max_samples}
+
+# RWKU's utility sets also carry a `subject` column, and the reference
+# implementation scores them per target entity (eval_rwku_dream.py filters with
+# `r.get("subject") in subjects`). Filtering here matches that and keeps the
+# metric proportional to one entity instead of the whole corpus.
+datasets:
+  RWKU_truthfulqa:
+    args:
+      hf_args:
+        filter_column: subject
+        filter_value: ${eval.rwku_dlm.target_subject}
