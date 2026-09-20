@@ -10,9 +10,10 @@ checkpointed per sample, so interrupted runs resume without repeating
 successful judge calls.
 
 Use ``--benchmark tofu`` (default) for TOFU_SUMMARY.json/TOFU_EVAL.json with
-datasets forget/retain/ra/wf, or ``--benchmark muse`` for
+datasets forget/retain/ra/wf, ``--benchmark muse`` for
 MUSE_SUMMARY.json/MUSE_EVAL.json with datasets forget_knowmem/forget_verbmem/
-retain_knowmem.
+retain_knowmem, or ``--benchmark rwku`` for RWKU_SUMMARY.json/RWKU_EVAL.json
+with the forget_level1/2/3 and neighbor_level1/2 probes.
 """
 
 import argparse
@@ -66,6 +67,22 @@ BENCHMARKS = {
             "forget_knowmem": "forget_knowmem_ROUGE",
             "forget_verbmem": "forget_verbmem_ROUGE",
             "retain_knowmem": "retain_knowmem_ROUGE",
+        },
+    },
+    # RWKU's utility metrics (mmlu / truthfulqa_mc1 / triviaqa_em) are absent by
+    # design: they score a choice or an exact match and never record the
+    # input/ground_truth/generation triple a judge needs. Only the ROUGE probes
+    # are listed.
+    "rwku": {
+        "summary_name": "RWKU_SUMMARY.json",
+        "eval_name": "RWKU_EVAL.json",
+        "extra_summary_names": (),
+        "datasets": {
+            "forget_level1": "forget_level1_ROUGE",
+            "forget_level2": "forget_level2_ROUGE",
+            "forget_level3": "forget_level3_ROUGE",
+            "neighbor_level1": "neighbor_level1_ROUGE",
+            "neighbor_level2": "neighbor_level2_ROUGE",
         },
     },
 }

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Per-entity RWKU unlearning, matching the MDU reference setting: no SFT stage,
-# forget-only (no retain term), lr 1e-5, per-device batch 4. SDU trains for 5
+# forget-only (no retain term), lr 1e-5, per-device batch 4. SDU trains for 10
 # epochs and every other method for 1 (SDU_EPOCHS / UNLEARN_EPOCHS). One
 # training run per target entity -- RWKU's own evaluation filters every forget
 # and neighbor probe by `subject`, so a checkpoint that forgot all entities at
@@ -32,7 +32,7 @@ load_subjects
 SETTING="${SETTING:-train_v1}"
 # SDU needs more passes than the gradient-based methods: its loss only shapes
 # the selected entity positions, so a single epoch barely moves the model.
-SDU_EPOCHS="${SDU_EPOCHS:-5}"
+SDU_EPOCHS="${SDU_EPOCHS:-10}"
 EPOCHS="${UNLEARN_EPOCHS:-1}"
 
 epochs_for() {
