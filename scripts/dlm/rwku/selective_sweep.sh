@@ -1,21 +1,26 @@
 #!/usr/bin/env bash
-# Grid-search SDU's two loss-balance hyperparameters -- SDU_BETA (forget vs.
-# preserve weighting) and SDU_PRESERVE_WEIGHT (preserve-term strength) -- on a
+# Grid-search the selective-unlearning loss balance -- SDU_BETA (entity
+# suppression strength) and SDU_PRESERVE_WEIGHT (preserve-term strength) -- on a
 # handful of RWKU entities, spreading the grid across all given GPUs in
 # parallel like launch_all.sh does for methods.
 #
+# Defaults to SelectiveUnlearning, which picks its query-entity positions with
+# the built-in heuristic. Set METHOD=SDU for the variant that reads them from
+# the offline Monte Carlo cache instead; both take the same two knobs.
+#
 # Each grid point is its own unlearn.sh run, tagged via RUN_TAG so checkpoints
 # and eval results never collide:
-#   eval/RWKU/{model}_DiffusionSDU_b{beta}_pw{pw}/train_v1/{idx}_{entity}/
+#   eval/RWKU/{model}_{Method}_b{beta}_pw{pw}/train_v1/{idx}_{entity}/
 #
 # Only BETA/PRESERVE_WEIGHT vary here; SDU_K_PERCENT/SDU_ENTITY_BOOST (which
 # affect the offline mask cache, not the loss) stay at their defaults, so the
 # cache is built once and shared across every grid point.
 #
-#   scripts/dlm/rwku/sdu_sweep.sh dream 0,1,2,3
-#   BETAS="2 5 10 20 50" scripts/dlm/rwku/sdu_sweep.sh dream 0,1,2,3
-#   PRESERVE_WEIGHTS="0.02 0.05 0.1 0.2 0.5" scripts/dlm/rwku/sdu_sweep.sh dream 0,1,2,3
-#   NUM_SUBJECTS=10 scripts/dlm/rwku/sdu_sweep.sh dream 0,1,2,3
+#   scripts/dlm/rwku/selective_sweep.sh dream 0,1,2,3
+#   METHOD=SDU scripts/dlm/rwku/selective_sweep.sh dream 0,1,2,3
+#   BETAS="2 5 10 20 50" scripts/dlm/rwku/selective_sweep.sh dream 0,1,2,3
+#   PRESERVE_WEIGHTS="0.02 0.05 0.1 0.2 0.5" scripts/dlm/rwku/selective_sweep.sh dream 0,1,2,3
+#   NUM_SUBJECTS=10 scripts/dlm/rwku/selective_sweep.sh dream 0,1,2,3
 set -euo pipefail
 cd "$(dirname "$0")/../../.." || exit 1
 source scripts/dlm/lib.sh
@@ -23,6 +28,9 @@ source scripts/dlm/lib.sh
 MODEL_KEY="${1:-dream}"
 DEVICES="${2:-0,1,2,3}"
 NUM_SUBJECTS="${NUM_SUBJECTS:-5}"
+METHOD="${METHOD:-SelectiveUnlearning}"
+[[ "$METHOD" == Diffusion* ]] || METHOD="Diffusion${METHOD}"
+[[ -f "configs/trainer/${METHOD}.yaml" ]] || die "no such trainer: configs/trainer/${METHOD}.yaml"
 
 # 3x3 around the current defaults (beta=10, preserve_weight=0.1).
 BETAS="${BETAS:-5 10 20}"
@@ -41,10 +49,11 @@ for beta in $BETAS; do
     done
 done
 
-LOG_DIR="${LOG_DIR:-logs/rwku_sdu_sweep}"
+LOG_DIR="${LOG_DIR:-logs/rwku_${METHOD}_sweep}"
 mkdir -p "$LOG_DIR"
 
-echo "=== RWKU SDU hyperparameter sweep ==="
+echo "=== RWKU selective-unlearning hyperparameter sweep ==="
+echo "  method   : ${METHOD}"
 echo "  model    : ${MODEL_KEY}"
 echo "  gpus     : ${GPU_POOL[*]}"
 echo "  entities : ${NUM_SUBJECTS}"
@@ -82,7 +91,7 @@ for cfg in "${CONFIGS[@]}"; do
     gpu="${GPU_POOL[$SLOT]}"
     log="${LOG_DIR}/${MODEL_KEY}_${tag}_gpu${gpu}.log"
     echo "--- beta=${beta} preserve_weight=${pw} -> gpu ${gpu}  (${log})"
-    GPUS="$gpu" METHODS=SDU NUM_SUBJECTS="$NUM_SUBJECTS" NO_SUMMARY=1 \
+    GPUS="$gpu" METHODS="$METHOD" NUM_SUBJECTS="$NUM_SUBJECTS" NO_SUMMARY=1 \
         SDU_BETA="$beta" SDU_PRESERVE_WEIGHT="$pw" RUN_TAG="$tag" \
         bash scripts/dlm/rwku/unlearn.sh "$MODEL_KEY" "$gpu" > "$log" 2>&1 &
     GPU_PID[$SLOT]=$!

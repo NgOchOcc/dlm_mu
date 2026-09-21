@@ -1,0 +1,33 @@
+# @package _global_
+# Entity-counterfactual selective unlearning on RWKU, per-entity.
+#
+# Same per-entity, forget-only, no-SFT setting as unlearn/rwku/dlm.yaml. Unlike
+# dlm_sdu.yaml this picks its query-entity positions with the built-in
+# is_entity_surface heuristic rather than an offline Monte Carlo cache, so it
+# needs no mask cache and no index-emitting collator.
+defaults:
+  - override /model: LLaDA-8B-Instruct
+  - override /trainer: DiffusionSelectiveUnlearning
+  - override /data: unlearn
+  - override /data/datasets@data.forget: RWKU_forget_pair
+  - override /data/datasets@data.retain: null
+  - override /eval: rwku_dlm
+
+data:
+  anchor: forget
+  forget:
+    RWKU_forget_pair: {}
+
+eval:
+  rwku_dlm:
+    overwrite: true
+
+trainer:
+  args:
+    per_device_train_batch_size: 4
+    warmup_epochs: 1.0
+    learning_rate: 1e-5
+    weight_decay: 0.01
+    num_train_epochs: 3
+
+task_name: ???

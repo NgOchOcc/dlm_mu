@@ -28,6 +28,32 @@ from pathlib import Path
 
 from tqdm import tqdm
 
+def _preset_judge_env(argv):
+    """Apply --workers/--judge-model/--judge-url before the judge module loads.
+
+    llm_judge_api reads these from the environment at import time, and sizes its
+    HTTP connection pool from JUDGE_WORKERS right there -- so setting them after
+    the import would leave the pool at the old size and silently cap throughput.
+    Values already in the environment win, matching how the other JUDGE_* knobs
+    behave.
+    """
+    flags = {
+        "--workers": "JUDGE_WORKERS",
+        "--judge-model": "JUDGE_MODEL",
+        "--judge-url": "JUDGE_BASE_URL",
+    }
+    for index, token in enumerate(argv):
+        name, _, inline = token.partition("=")
+        variable = flags.get(name)
+        if variable is None:
+            continue
+        value = inline if inline else (argv[index + 1] if index + 1 < len(argv) else None)
+        if value:
+            os.environ[variable] = value
+
+
+_preset_judge_env(sys.argv[1:])
+
 ROOT = Path(__file__).resolve().parents[2]
 JUDGE_API_PATH = ROOT / "src/evals/metrics/llm_judge_api.py"
 JUDGE_API_SPEC = importlib.util.spec_from_file_location("llm_judge_api", JUDGE_API_PATH)
@@ -130,9 +156,11 @@ def parse_args():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--benchmark",
+        type=str.lower,
         choices=tuple(BENCHMARKS),
         default="tofu",
-        help="Which eval output layout/dataset set to judge (default: tofu).",
+        help="Which eval output layout/dataset set to judge (default: tofu). "
+             "Case-insensitive.",
     )
     parser.add_argument("--eval-root", type=Path, default=DEFAULT_EVAL_ROOT)
     parser.add_argument(
@@ -147,6 +175,26 @@ def parse_args():
     parser.add_argument("--list", action="store_true", help="List eligible runs and exit")
     parser.add_argument("--no-progress", action="store_true")
     parser.add_argument("--overwrite", action="store_true")
+    # Read before the judge module imports (see _preset_judge_env); declared
+    # here so they appear in --help and are validated like any other flag.
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=None,
+        help=f"Concurrent judge requests (default: {JUDGE_WORKERS}, "
+             "or $JUDGE_WORKERS).",
+    )
+    parser.add_argument(
+        "--judge-model",
+        default=None,
+        help=f"Judge model name (default: {JUDGE_MODEL}, or $JUDGE_MODEL).",
+    )
+    parser.add_argument(
+        "--judge-url",
+        default=None,
+        help=f"OpenAI-compatible base URL (default: {JUDGE_BASE_URL}, "
+             "or $JUDGE_BASE_URL).",
+    )
     return parser.parse_args()
 
 

@@ -22,7 +22,7 @@
 #
 # RUN_TAG suffixes the method label used for checkpoints/eval dirs (but not the
 # real trainer), so several hyperparameter variants of the same method can run
-# side by side without colliding -- see sdu_sweep.sh.
+# side by side without colliding -- see selective_sweep.sh.
 #   SDU_BETA=20 RUN_TAG=b20 METHODS=SDU scripts/dlm/rwku/unlearn.sh dream 0
 set -euo pipefail
 cd "$(dirname "$0")/../../.." || exit 1
@@ -47,7 +47,7 @@ EPOCHS="${UNLEARN_EPOCHS:-1}"
 
 epochs_for() {
     case "$1" in
-        DiffusionSDU) echo "$SDU_EPOCHS" ;;
+        DiffusionSDU|DiffusionSelectiveUnlearning) echo "$SDU_EPOCHS" ;;
         *)            echo "$EPOCHS" ;;
     esac
 }
@@ -102,13 +102,24 @@ run_one() {
     local exp=unlearn/rwku/dlm
     local epochs; epochs=$(epochs_for "$method")
     local extra=()
-    if [[ "$method" == "DiffusionSDU" ]]; then
-        exp=unlearn/rwku/dlm_sdu
-        local cache; cache=$(sdu_cache_for "$subject")
-        extra+=("trainer.method_args.mask_cache_path=${cache}"
-                "trainer.method_args.beta=${SDU_BETA:-10.0}"
-                "trainer.method_args.preserve_weight=${SDU_PRESERVE_WEIGHT:-0.1}")
-    fi
+    # Both selective methods take the same beta / preserve_weight loss balance;
+    # only SDU additionally reads its query mask from the offline cache.
+    case "$method" in
+        DiffusionSDU)
+            exp=unlearn/rwku/dlm_sdu
+            local cache; cache=$(sdu_cache_for "$subject")
+            extra+=("trainer.method_args.mask_cache_path=${cache}")
+            ;;
+        DiffusionSelectiveUnlearning)
+            exp=unlearn/rwku/dlm_selective_unlearning
+            ;;
+    esac
+    case "$method" in
+        DiffusionSDU|DiffusionSelectiveUnlearning)
+            extra+=("trainer.method_args.beta=${SDU_BETA:-10.0}"
+                    "trainer.method_args.preserve_weight=${SDU_PRESERVE_WEIGHT:-0.1}")
+            ;;
+    esac
 
     assert_gpus
     pin_single_gpu
