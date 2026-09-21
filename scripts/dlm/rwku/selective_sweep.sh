@@ -25,6 +25,8 @@
 #   BETAS="2 5 10 20 50" scripts/dlm/rwku/selective_sweep.sh dream 0,1,2,3
 #   NUM_SUBJECTS=10 scripts/dlm/rwku/selective_sweep.sh dream 0,1,2,3
 set -euo pipefail
+RWKU_REPO_FALLBACK="/prj/corp/airesearch/lasvegas/vol20-scratch/nluu/working/open-unlearning"
+
 # Locate the repository root without relying on $0: it is not a usable path
 # when the script is sourced, piped in, or copied into a batch spool directory
 # (sbatch), in which case the old `cd $(dirname $0)/../../..` silently landed
@@ -36,9 +38,15 @@ _rwku_root() {
         dir=$(cd "$(dirname "$src")/../../.." && pwd) || return 1
         [[ -f "$dir/scripts/dlm/lib.sh" ]] && { echo "$dir"; return 0; }
     fi
-    # Fall back to REPO_DIR, then to the working directory the job started in.
-    for dir in "${REPO_DIR:-}" "$PWD"; do
-        [[ -n "$dir" && -f "$dir/scripts/dlm/lib.sh" ]] && { echo "$dir"; return 0; }
+    # Fall back to REPO_DIR, the known cluster checkout, then the working
+    # directory the job started in. Each candidate is verified by looking for
+    # scripts/dlm/lib.sh, so a stale hardcoded path is skipped rather than
+    # silently used.
+    local fallback
+    for fallback in "${REPO_DIR:-}" "$RWKU_REPO_FALLBACK" "$PWD"; do
+        [[ -n "$fallback" && -f "$fallback/scripts/dlm/lib.sh" ]] && {
+            echo "$fallback"; return 0
+        }
     done
     return 1
 }
