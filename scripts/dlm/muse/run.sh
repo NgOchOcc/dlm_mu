@@ -29,11 +29,19 @@
 #   NO_EVAL=1                  skip every evaluation
 #   OVERWRITE=1                redo work that already has results on disk
 #   UNLEARN_EPOCHS             epochs for every method except SDU (default: 2)
-#   SDU_EPOCHS                 epochs for SDU (default: 20)
+#   SDU_EPOCHS                 epochs for SDU/SelectiveUnlearning (default: 10)
+#   RUN_TAG                    suffix for checkpoint/eval names (sweeps)
 #   TRAIN_BS / GRAD_ACCUM / SDU_BETA / SDU_PRESERVE_WEIGHT
 #                              other hyperparameter overrides
 set -euo pipefail
-cd "$(dirname "$0")/../../.." || exit 1
+# Run from the repository root. The job runner starts the script there and asks
+# it not to change directory, so this only verifies the assumption instead of
+# cd-ing: $0 is not a usable path when the script is sourced, piped in, or
+# copied into a batch spool, and guessing from it silently landed elsewhere.
+if [[ ! -f scripts/dlm/lib.sh ]]; then
+    echo "error: run this from the repository root (no scripts/dlm/lib.sh in $PWD)." >&2
+    exit 1
+fi
 
 source scripts/dlm/lib.sh
 
@@ -47,7 +55,9 @@ DATA_SPLITS="${3:-News Books}"
 # SFT_EPOCHS="${SFT_EPOCHS:-50}"
 
 UNLEARN_EPOCHS="${UNLEARN_EPOCHS:-2}"
-SDU_EPOCHS="${SDU_EPOCHS:-20}"
+SDU_EPOCHS="${SDU_EPOCHS:-10}"
+RUN_TAG="${RUN_TAG:-}"
+TAG_SUFFIX="${RUN_TAG:+_${RUN_TAG}}"
 
 parse_methods "${METHODS:-DiffusionGA,DiffusionGD,DiffusionNPO,DiffusionSimNPO,DiffusionWGA,DiffusionSDU}"
 
@@ -113,13 +123,25 @@ run_unlearn() {
     local exp="unlearn/muse/dlm_forget_only_knowmem"
     local epochs="${UNLEARN_EPOCHS}"
     local extra=("trainer.method_args.loss_weight_type=\"${LOSS_WEIGHT}\"")
-    if [[ "$trainer" == "DiffusionSDU" ]]; then
-        exp="unlearn/muse/dlm_sdu"
-        epochs="${SDU_EPOCHS}"
-        extra+=("trainer.method_args.mask_cache_path=${cache}"
-                "trainer.method_args.beta=${SDU_BETA:-10.0}"
-                "trainer.method_args.preserve_weight=${SDU_PRESERVE_WEIGHT:-0.1}")
-    fi
+    # Both selective methods take the same beta / preserve_weight loss balance
+    # and the same longer schedule; only SDU additionally reads its query mask
+    # from the offline cache.
+    case "$trainer" in
+        DiffusionSDU)
+            exp="unlearn/muse/dlm_sdu"
+            extra+=("trainer.method_args.mask_cache_path=${cache}")
+            ;;
+        DiffusionSelectiveUnlearning)
+            exp="unlearn/muse/dlm_selective_unlearning"
+            ;;
+    esac
+    case "$trainer" in
+        DiffusionSDU|DiffusionSelectiveUnlearning)
+            epochs="${SDU_EPOCHS}"
+            extra+=("trainer.method_args.beta=${SDU_BETA:-10.0}"
+                    "trainer.method_args.preserve_weight=${SDU_PRESERVE_WEIGHT:-0.1}")
+            ;;
+    esac
 
     echo "==================== UNLEARN ${task} (${epochs} ep) ====================" >&2
     CUDA_VISIBLE_DEVICES=${GPUS} accelerate launch \
@@ -202,7 +224,9 @@ run_for_model() {
 
         # ---- step 2: unlearn each method ----
         for trainer in "${METHODS_LIST[@]}"; do
-            task="muse_${MODEL}_${data_split}_${trainer}"
+            # RUN_TAG separates hyperparameter-sweep runs of the same method
+            # so their checkpoints and eval results never overwrite each other.
+            task="muse_${MODEL}_${data_split}_${trainer}${TAG_SUFFIX}"
             out="saves/unlearn/${task}"
             cache="saves/sdu_cache/muse_${MODEL}_${data_split}.json"
 

@@ -1,0 +1,46 @@
+# @package _global_
+# Forget-only entity-counterfactual selective unlearning for masked-diffusion
+# LMs on MUSE. Unlike dlm_sdu.yaml this picks its query-entity positions with
+# the built-in is_entity_surface heuristic rather than an offline Monte Carlo
+# cache, so it needs no mask cache and no index-emitting collator.
+#
+# The forget set is still MUSE_forget_knowmem (the knowmem forget_qa QA split)
+# rather than the MUSE_forget raw corpus: selective unlearning needs the
+# query/answer boundary that labels != -100 provides, which a plain pretraining
+# corpus does not have.
+defaults:
+  - override /model: LLaDA-8B-Instruct
+  - override /trainer: DiffusionSelectiveUnlearning
+  - override /data: unlearn
+  - override /data/datasets@data.forget: MUSE_forget_knowmem
+  - override /data/datasets@data.retain: null
+  - override /eval: muse_dlm
+
+data_split: News
+retain_logs_path: null
+
+data:
+  anchor: forget
+  forget:
+    MUSE_forget_knowmem:
+      args:
+        hf_args:
+          path: muse-bench/MUSE-${data_split}
+        few_shot_dataset_hf_args:
+          path: muse-bench/MUSE-${data_split}
+
+eval:
+  muse_dlm:
+    data_split: ${data_split}
+    retain_logs_path: ${retain_logs_path}
+    overwrite: true
+
+trainer:
+  args:
+    warmup_epochs: 1.0
+    learning_rate: 1e-5
+    weight_decay: 0.01
+    num_train_epochs: 10
+    lr_scheduler_type: constant
+
+task_name: ???
