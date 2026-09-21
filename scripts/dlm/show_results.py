@@ -765,7 +765,10 @@ def discover_rwku_runs(eval_root):
         match = _RWKU_RUN_RE.match(run_dir.parent.name)
         if not match:
             continue
-        runs.append((match.group(1), match.group(2) + match.group(3), run_dir))
+        # group(3) is the optional RUN_TAG suffix; tolerate an older two-group
+        # pattern so a partially updated checkout still runs.
+        tag = match.group(3) if match.re.groups >= 3 else ""
+        runs.append((match.group(1), match.group(2) + (tag or ""), run_dir))
     return sorted(runs)
 
 
