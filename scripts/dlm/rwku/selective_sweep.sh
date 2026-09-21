@@ -25,37 +25,14 @@
 #   BETAS="2 5 10 20 50" scripts/dlm/rwku/selective_sweep.sh dream 0,1,2,3
 #   NUM_SUBJECTS=10 scripts/dlm/rwku/selective_sweep.sh dream 0,1,2,3
 set -euo pipefail
-RWKU_REPO_FALLBACK="/prj/corp/airesearch/lasvegas/vol20-scratch/nluu/working/open-unlearning"
-
-# Locate the repository root without relying on $0: it is not a usable path
-# when the script is sourced, piped in, or copied into a batch spool directory
-# (sbatch), in which case the old `cd $(dirname $0)/../../..` silently landed
-# somewhere else and `source scripts/dlm/lib.sh` failed before any log existed.
-_rwku_root() {
-    local src="${BASH_SOURCE[0]:-}"
-    if [[ -n "$src" && "$src" != "bash" && -e "$src" ]]; then
-        local dir
-        dir=$(cd "$(dirname "$src")/../../.." && pwd) || return 1
-        [[ -f "$dir/scripts/dlm/lib.sh" ]] && { echo "$dir"; return 0; }
-    fi
-    # Fall back to REPO_DIR, the known cluster checkout, then the working
-    # directory the job started in. Each candidate is verified by looking for
-    # scripts/dlm/lib.sh, so a stale hardcoded path is skipped rather than
-    # silently used.
-    local fallback
-    for fallback in "${REPO_DIR:-}" "$RWKU_REPO_FALLBACK" "$PWD"; do
-        [[ -n "$fallback" && -f "$fallback/scripts/dlm/lib.sh" ]] && {
-            echo "$fallback"; return 0
-        }
-    done
-    return 1
-}
-ROOT_DIR=$(_rwku_root) || {
-    echo "error: cannot locate the repository root (no scripts/dlm/lib.sh found)." >&2
-    echo "       Run this script by its path from a checkout, or set REPO_DIR." >&2
+# Run from the repository root. The job runner starts the script there and
+# asks it not to change directory, so this only verifies the assumption instead
+# of cd-ing: $0 is not a usable path when the script is sourced, piped in, or
+# copied into a batch spool, and guessing from it silently landed elsewhere.
+if [[ ! -f scripts/dlm/lib.sh ]]; then
+    echo "error: run this from the repository root (no scripts/dlm/lib.sh in $PWD)." >&2
     exit 1
-}
-cd "$ROOT_DIR" || exit 1
+fi
 source scripts/dlm/lib.sh
 
 MODEL_KEY="${1:-dream}"
