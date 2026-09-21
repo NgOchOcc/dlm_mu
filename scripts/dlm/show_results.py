@@ -971,21 +971,18 @@ DEFAULT_MUSE_EVAL_DIR = Path("saves/eval")
 # saves/eval/muse_{MODEL}_{split}_{method}[_{tag}]/MUSE_SUMMARY.json
 _MUSE_RUN_RE = re.compile(r"^muse_(.+?)_(News|Books)_(.+)$")
 
-# Verbatim and knowledge memorisation of the forget set should both drop;
-# retain knowledge should hold.
+# Knowledge memorisation of the forget set should drop; retain knowledge should
+# hold. verbmem is excluded entirely -- it feeds neither the scores nor the
+# --detail table.
 MUSE_FORGET_KNOWLEDGE_COMPONENTS = {
     "forget_knowmem_ROUGE": "lower",
-    "forget_verbmem_ROUGE": "lower",
 }
 MUSE_FORGET_JUDGE_COMPONENTS = {
     "forget_knowmem_Relevance": "judge_higher",
-    "forget_verbmem_Relevance": "judge_higher",
     "forget_knowmem_Correctness": "judge_lower",
-    "forget_verbmem_Correctness": "judge_lower",
 }
 MUSE_FORGET_LINGUISTIC_COMPONENTS = {
     "forget_knowmem_Fluency": "judge_higher",
-    "forget_verbmem_Fluency": "judge_higher",
 }
 MUSE_RETAIN_KNOWLEDGE_COMPONENTS = {"retain_knowmem_ROUGE": "higher"}
 MUSE_RETAIN_JUDGE_COMPONENTS = {
@@ -1010,9 +1007,7 @@ MUSE_JUDGE_METRICS = (
 )
 MUSE_LOWER_BETTER = {
     "forget_knowmem_ROUGE",
-    "forget_verbmem_ROUGE",
     "forget_knowmem_Correctness",
-    "forget_verbmem_Correctness",
 }
 
 MUSE_GROUPS = [
@@ -1023,13 +1018,9 @@ MUSE_GROUPS = [
 MUSE_DETAIL_GROUPS = [
     ("Forget", [
         ("forget_knowmem_ROUGE", "fk_R"),
-        ("forget_verbmem_ROUGE", "fv_R"),
         ("forget_knowmem_Relevance", "fk_Rel"),
-        ("forget_verbmem_Relevance", "fv_Rel"),
         ("forget_knowmem_Correctness", "fk_Cor"),
-        ("forget_verbmem_Correctness", "fv_Cor"),
         ("forget_knowmem_Fluency", "fk_Flu"),
-        ("forget_verbmem_Fluency", "fv_Flu"),
     ]),
     ("Retain", [
         ("retain_knowmem_ROUGE", "rk_R"),
@@ -1077,16 +1068,12 @@ def load_muse_run(run_dir):
 def compute_muse_scores(raw):
     data = dict(raw)
 
-    forget_scores = []
-    for split in ("knowmem", "verbmem"):
-        rouge = _score_unit(data.get(f"forget_{split}_ROUGE"), "lower")
-        relevance = _score_unit(data.get(f"forget_{split}_Relevance"), "judge_higher")
-        correctness = _score_unit(data.get(f"forget_{split}_Correctness"), "judge_lower")
-        score = _hmean([rouge, relevance, correctness])
-        if score is not None:
-            forget_scores.append(score)
-    if forget_scores:
-        data["forget_quality"] = _amean(forget_scores)
+    rouge = _score_unit(data.get("forget_knowmem_ROUGE"), "lower")
+    relevance = _score_unit(data.get("forget_knowmem_Relevance"), "judge_higher")
+    correctness = _score_unit(data.get("forget_knowmem_Correctness"), "judge_lower")
+    forget_quality = _hmean([rouge, relevance, correctness])
+    if forget_quality is not None:
+        data["forget_quality"] = forget_quality
     forget_linguistic = _component_amean(data, MUSE_FORGET_LINGUISTIC_COMPONENTS)
     if forget_linguistic is not None:
         data["forget_linguistic"] = forget_linguistic
