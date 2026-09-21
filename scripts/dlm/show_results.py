@@ -549,48 +549,7 @@ def print_table(title, model_rows, models, retain_name, groups, cols, judge_metr
     print(_rule("╰", "┴", "╯", widths))
 
 
-def main():
-    ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument(
-        "--eval-dir",
-        type=Path,
-        default=DEFAULT_EVAL_DIR,
-        help="Evaluation root to scan recursively (default: saves/eval).",
-    )
-    ap.add_argument(
-        "--mode",
-        choices=["both", "forget_only", "simple"],
-        default="both",
-        help="'both' shows every method variant; 'forget_only' shows the "
-        "_forgetonly runs plus retain-free-by-design methods (all other "
-        "no-suffix runs dropped, GA included); 'simple' shows only the "
-        "standard baselines. Reference rows always show.",
-    )
-    ap.add_argument(
-        "--detail",
-        action="store_true",
-        help="Show all component metrics used by EQ, MU, and LQ in addition "
-        "to the four final scores.",
-    )
-    ap.add_argument(
-        "--split",
-        choices=FORGET_SPLITS,
-        default=None,
-        help="Only show this forget split (default: show forget01, forget05, "
-        "and forget10).",
-    )
-    ap.add_argument(
-        "--method",
-        default=None,
-        help="Only show methods matching this case-insensitive name prefix, plus "
-        "their base and retain reference rows.",
-    )
-    ap.add_argument(
-        "--model",
-        default=None,
-        help="Only show models matching this case-insensitive name prefix.",
-    )
-    args = ap.parse_args()
+def run_tofu(args):
     groups = DETAIL_GROUPS if args.detail else GROUPS
     cols = [(key, header) for _, group_cols in groups for key, header in group_cols]
     detail_label = " [DETAIL]" if args.detail else ""
@@ -636,6 +595,438 @@ def main():
                 )
 
     print()
+
+
+# ---------------------------------------------------------------------------
+# RWKU
+# ---------------------------------------------------------------------------
+
+DEFAULT_RWKU_EVAL_DIR = Path("eval/RWKU")
+
+RWKU_ENTITIES = [
+    "Stephen_King",
+    "Confucius",
+    "Bruce_Lee",
+    "Warren_Buffett",
+    "Christina_Aguilera",
+]
+
+RWKU_FORGET_KNOWLEDGE_COMPONENTS = {
+    "forget_level1_ROUGE": "lower",
+    "forget_level2_ROUGE": "lower",
+    "forget_level3_ROUGE": "lower",
+}
+RWKU_FORGET_JUDGE_COMPONENTS = {
+    "forget_level1_Relevance": "judge_higher",
+    "forget_level2_Relevance": "judge_higher",
+    "forget_level3_Relevance": "judge_higher",
+    "forget_level1_Correctness": "judge_lower",
+    "forget_level2_Correctness": "judge_lower",
+    "forget_level3_Correctness": "judge_lower",
+}
+RWKU_FORGET_LINGUISTIC_COMPONENTS = {
+    "forget_level1_Fluency": "judge_higher",
+    "forget_level2_Fluency": "judge_higher",
+    "forget_level3_Fluency": "judge_higher",
+}
+# Neighbor facts should be *retained*, so knowledge/correctness are "higher".
+RWKU_NEIGHBOR_KNOWLEDGE_COMPONENTS = {
+    "neighbor_level1_ROUGE": "higher",
+    "neighbor_level2_ROUGE": "higher",
+}
+RWKU_NEIGHBOR_JUDGE_COMPONENTS = {
+    "neighbor_level1_Relevance": "judge_higher",
+    "neighbor_level2_Relevance": "judge_higher",
+    "neighbor_level1_Correctness": "judge_higher",
+    "neighbor_level2_Correctness": "judge_higher",
+}
+RWKU_NEIGHBOR_LINGUISTIC_COMPONENTS = {
+    "neighbor_level1_Fluency": "judge_higher",
+    "neighbor_level2_Fluency": "judge_higher",
+}
+
+RWKU_RAW_KEYS = (
+    set(RWKU_FORGET_KNOWLEDGE_COMPONENTS)
+    | set(RWKU_FORGET_JUDGE_COMPONENTS)
+    | set(RWKU_FORGET_LINGUISTIC_COMPONENTS)
+    | set(RWKU_NEIGHBOR_KNOWLEDGE_COMPONENTS)
+    | set(RWKU_NEIGHBOR_JUDGE_COMPONENTS)
+    | set(RWKU_NEIGHBOR_LINGUISTIC_COMPONENTS)
+    | {"mmlu"}
+)
+
+# Raw judge metrics are on a 0-10 scale; used only in --detail tables.
+RWKU_JUDGE_METRICS = (
+    set(RWKU_FORGET_JUDGE_COMPONENTS)
+    | set(RWKU_FORGET_LINGUISTIC_COMPONENTS)
+    | set(RWKU_NEIGHBOR_JUDGE_COMPONENTS)
+    | set(RWKU_NEIGHBOR_LINGUISTIC_COMPONENTS)
+)
+# Raw components where a lower value is better; used only in --detail tables.
+RWKU_LOWER_BETTER = {
+    "forget_level1_ROUGE",
+    "forget_level2_ROUGE",
+    "forget_level3_ROUGE",
+    "forget_level1_Correctness",
+    "forget_level2_Correctness",
+    "forget_level3_Correctness",
+}
+
+RWKU_GROUPS = [
+    ("Forget", [("forget_quality", "EQ"), ("forget_linguistic", "LQ")]),
+    ("Neighbor", [("neighbor_quality", "MU"), ("neighbor_linguistic", "LQ")]),
+    ("MMLU", [("mmlu", "ACC")]),
+]
+
+RWKU_DETAIL_GROUPS = [
+    ("Forget", [
+        ("forget_level1_ROUGE", "f1_R"),
+        ("forget_level2_ROUGE", "f2_R"),
+        ("forget_level3_ROUGE", "f3_R"),
+        ("forget_level1_Relevance", "f1_Rel"),
+        ("forget_level2_Relevance", "f2_Rel"),
+        ("forget_level3_Relevance", "f3_Rel"),
+        ("forget_level1_Correctness", "f1_Cor"),
+        ("forget_level2_Correctness", "f2_Cor"),
+        ("forget_level3_Correctness", "f3_Cor"),
+        ("forget_level1_Fluency", "f1_Flu"),
+        ("forget_level2_Fluency", "f2_Flu"),
+        ("forget_level3_Fluency", "f3_Flu"),
+    ]),
+    ("Neighbor", [
+        ("neighbor_level1_ROUGE", "n1_R"),
+        ("neighbor_level2_ROUGE", "n2_R"),
+        ("neighbor_level1_Relevance", "n1_Rel"),
+        ("neighbor_level2_Relevance", "n2_Rel"),
+        ("neighbor_level1_Correctness", "n1_Cor"),
+        ("neighbor_level2_Correctness", "n2_Cor"),
+        ("neighbor_level1_Fluency", "n1_Flu"),
+        ("neighbor_level2_Fluency", "n2_Flu"),
+    ]),
+    ("MMLU", [("mmlu", "ACC")]),
+    ("Final Scores", [
+        ("forget_quality", "F_EQ"),
+        ("forget_linguistic", "F_LQ"),
+        ("neighbor_quality", "N_MU"),
+        ("neighbor_linguistic", "N_LQ"),
+        ("mmlu", "ACC"),
+    ]),
+]
+
+# Criteria averaged across levels; used only in --detail=criteria tables.
+RWKU_CRITERIA_JUDGE_METRICS = {
+    "forget_Relevance",
+    "forget_Correctness",
+    "forget_Fluency",
+    "neighbor_Relevance",
+    "neighbor_Correctness",
+    "neighbor_Fluency",
+}
+RWKU_CRITERIA_LOWER_BETTER = {"forget_ROUGE", "forget_Correctness"}
+
+RWKU_CRITERIA_GROUPS = [
+    ("Forget", [
+        ("forget_ROUGE", "ROUGE"),
+        ("forget_Relevance", "Rel"),
+        ("forget_Correctness", "Cor"),
+        ("forget_Fluency", "Flu"),
+    ]),
+    ("Neighbor", [
+        ("neighbor_ROUGE", "ROUGE"),
+        ("neighbor_Relevance", "Rel"),
+        ("neighbor_Correctness", "Cor"),
+        ("neighbor_Fluency", "Flu"),
+    ]),
+    ("MMLU", [("mmlu", "ACC")]),
+    ("Final Scores", [
+        ("forget_quality", "F_EQ"),
+        ("forget_linguistic", "F_LQ"),
+        ("neighbor_quality", "N_MU"),
+        ("neighbor_linguistic", "N_LQ"),
+        ("mmlu", "ACC"),
+    ]),
+]
+
+RWKU_METHOD_ORDER = {"BST": 0, "WGA": 1, "NPO": 2, "SDU": 3}
+
+_RWKU_RUN_RE = re.compile(r"^(.+?)_(base|Diffusion[A-Za-z0-9]+)$")
+_RWKU_ENTITY_DIR_RE = re.compile(r"^\d+_(.+)$")
+
+
+def discover_rwku_runs(eval_root):
+    """[(model, method, run_dir), ...] for eval/RWKU/{model}_{method}/train_v1."""
+    runs = []
+    if not eval_root.is_dir():
+        return runs
+    for run_dir in eval_root.glob("*/train_v1"):
+        match = _RWKU_RUN_RE.match(run_dir.parent.name)
+        if not match:
+            continue
+        runs.append((match.group(1), match.group(2), run_dir))
+    return sorted(runs)
+
+
+def load_rwku_run(run_dir, entities=RWKU_ENTITIES):
+    """Average each raw metric across `entities`' RWKU_SUMMARY/LLM_JUDGE files."""
+    entity_dirs = {}
+    for child in run_dir.iterdir():
+        if not child.is_dir():
+            continue
+        match = _RWKU_ENTITY_DIR_RE.match(child.name)
+        if match:
+            entity_dirs[match.group(1)] = child
+
+    raw_values = {key: [] for key in RWKU_RAW_KEYS}
+    for entity in entities:
+        entity_dir = entity_dirs.get(entity)
+        if entity_dir is None:
+            continue
+        summary = _read_json(entity_dir / "RWKU_SUMMARY.json") or {}
+        judge = _read_json(entity_dir / "LLM_JUDGE_COMPLETE.json") or {}
+        merged = dict(summary)
+        if isinstance(judge.get("metrics"), dict):
+            merged.update(judge["metrics"])
+        for key in RWKU_RAW_KEYS:
+            value = merged.get(key)
+            if isinstance(value, (int, float)):
+                raw_values[key].append(value)
+
+    if not any(raw_values.values()):
+        return None
+    return {
+        key: (sum(values) / len(values) if values else None)
+        for key, values in raw_values.items()
+    }
+
+
+def _levels_mean(data, keys):
+    values = [data.get(key) for key in keys]
+    values = [value for value in values if isinstance(value, (int, float))]
+    if not values:
+        return None
+    return sum(values) / len(values)
+
+
+def compute_rwku_scores(averaged):
+    data = dict(averaged)
+
+    data["forget_ROUGE"] = _levels_mean(
+        data, ["forget_level1_ROUGE", "forget_level2_ROUGE", "forget_level3_ROUGE"]
+    )
+    data["forget_Relevance"] = _levels_mean(
+        data,
+        ["forget_level1_Relevance", "forget_level2_Relevance", "forget_level3_Relevance"],
+    )
+    data["forget_Correctness"] = _levels_mean(
+        data,
+        ["forget_level1_Correctness", "forget_level2_Correctness", "forget_level3_Correctness"],
+    )
+    data["forget_Fluency"] = _levels_mean(
+        data, ["forget_level1_Fluency", "forget_level2_Fluency", "forget_level3_Fluency"]
+    )
+    data["neighbor_ROUGE"] = _levels_mean(
+        data, ["neighbor_level1_ROUGE", "neighbor_level2_ROUGE"]
+    )
+    data["neighbor_Relevance"] = _levels_mean(
+        data, ["neighbor_level1_Relevance", "neighbor_level2_Relevance"]
+    )
+    data["neighbor_Correctness"] = _levels_mean(
+        data, ["neighbor_level1_Correctness", "neighbor_level2_Correctness"]
+    )
+    data["neighbor_Fluency"] = _levels_mean(
+        data, ["neighbor_level1_Fluency", "neighbor_level2_Fluency"]
+    )
+
+    forget_level_scores = []
+    for level in (1, 2, 3):
+        rouge = _score_unit(data.get(f"forget_level{level}_ROUGE"), "lower")
+        relevance = _score_unit(data.get(f"forget_level{level}_Relevance"), "judge_higher")
+        correctness = _score_unit(data.get(f"forget_level{level}_Correctness"), "judge_lower")
+        level_score = _hmean([rouge, relevance, correctness])
+        if level_score is not None:
+            forget_level_scores.append(level_score)
+    forget_quality = _amean(forget_level_scores) if forget_level_scores else None
+    if forget_quality is not None:
+        data["forget_quality"] = forget_quality
+    forget_linguistic = _component_amean(data, RWKU_FORGET_LINGUISTIC_COMPONENTS)
+    if forget_linguistic is not None:
+        data["forget_linguistic"] = forget_linguistic
+
+    neighbor_level_scores = []
+    for level in (1, 2):
+        rouge = _score_unit(data.get(f"neighbor_level{level}_ROUGE"), "higher")
+        relevance = _score_unit(data.get(f"neighbor_level{level}_Relevance"), "judge_higher")
+        correctness = _score_unit(data.get(f"neighbor_level{level}_Correctness"), "judge_higher")
+        level_score = _hmean([rouge, relevance, correctness])
+        if level_score is not None:
+            neighbor_level_scores.append(level_score)
+    neighbor_quality = _amean(neighbor_level_scores) if neighbor_level_scores else None
+    if neighbor_quality is not None:
+        data["neighbor_quality"] = neighbor_quality
+    neighbor_linguistic = _component_amean(data, RWKU_NEIGHBOR_LINGUISTIC_COMPONENTS)
+    if neighbor_linguistic is not None:
+        data["neighbor_linguistic"] = neighbor_linguistic
+
+    mmlu = data.get("mmlu")
+    if isinstance(mmlu, (int, float)):
+        data["mmlu"] = max(0.0, min(1.0, mmlu))
+
+    return data
+
+
+def _rwku_method_rank(label):
+    return (RWKU_METHOD_ORDER.get(label, 99), label)
+
+
+def collect_rwku_rows(runs, model):
+    rows = []
+    base_run = next(
+        (run_dir for m, method, run_dir in runs if m == model and method == "base"),
+        None,
+    )
+    if base_run is not None:
+        averaged = load_rwku_run(base_run)
+        if averaged is not None:
+            rows.append(("base", compute_rwku_scores(averaged)))
+
+    methods = []
+    for m, method, run_dir in runs:
+        if m != model or method == "base":
+            continue
+        averaged = load_rwku_run(run_dir)
+        if averaged is None:
+            continue
+        label = method[len("Diffusion"):] if method.startswith("Diffusion") else method
+        methods.append((label, compute_rwku_scores(averaged)))
+    methods.sort(key=lambda r: _rwku_method_rank(r[0]))
+    rows.extend(methods)
+    return rows
+
+
+def run_rwku(args):
+    eval_root = args.eval_dir
+    runs = discover_rwku_runs(eval_root)
+    models = [
+        model
+        for model in sorted({m for m, _, _ in runs})
+        if _model_matches(model, args.model)
+    ]
+
+    if args.detail == "criteria":
+        groups = RWKU_CRITERIA_GROUPS
+        judge_metrics = RWKU_CRITERIA_JUDGE_METRICS
+        lower_better = RWKU_CRITERIA_LOWER_BETTER
+    elif args.detail:
+        groups = RWKU_DETAIL_GROUPS
+        judge_metrics = RWKU_JUDGE_METRICS
+        lower_better = RWKU_LOWER_BETTER
+    else:
+        groups = RWKU_GROUPS
+        judge_metrics = set()
+        lower_better = set()
+    cols = [(key, header) for _, group_cols in groups for key, header in group_cols]
+    detail_label = f" [DETAIL:{args.detail}]" if args.detail else ""
+
+    model_rows = {}
+    present = []
+    for model in models:
+        rows = collect_rwku_rows(runs, model)
+        if args.method is not None:
+            rows = [
+                (label, data)
+                for label, data in rows
+                if label == "base"
+                or _normalized_name(label).startswith(_normalized_name(args.method))
+            ]
+        block = dict(rows)
+        if not block:
+            continue
+        present.append(model)
+        model_rows[model] = block
+
+    if not model_rows:
+        print("\nNo RWKU results found.")
+        return
+
+    if args.detail:
+        for model in present:
+            print_table(
+                f"RWKU — {model}{detail_label}",
+                {model: model_rows[model]}, [model], None,
+                groups, cols, judge_metrics, lower_better,
+            )
+    else:
+        print_table(
+            f"RWKU{detail_label}", model_rows, present, None,
+            groups, cols, judge_metrics, lower_better,
+        )
+    print()
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument(
+        "--dataset",
+        choices=["tofu", "rwku"],
+        default="tofu",
+        help="Which evaluation results to render (default: tofu).",
+    )
+    ap.add_argument(
+        "--eval-dir",
+        type=Path,
+        default=None,
+        help="Evaluation root to scan recursively (default: saves/ablation for "
+        "tofu, eval/RWKU for rwku).",
+    )
+    ap.add_argument(
+        "--mode",
+        choices=["both", "forget_only", "simple"],
+        default="both",
+        help="TOFU only. 'both' shows every method variant; 'forget_only' shows "
+        "the _forgetonly runs plus retain-free-by-design methods (all other "
+        "no-suffix runs dropped, GA included); 'simple' shows only the "
+        "standard baselines. Reference rows always show.",
+    )
+    ap.add_argument(
+        "--detail",
+        nargs="?",
+        const="level",
+        default=None,
+        choices=["level", "criteria"],
+        help="Show component metrics used by the final scores in addition to "
+        "the final scores themselves. 'level' (default when --detail is passed "
+        "with no value) breaks each metric out per level (e.g. f1_R, f2_R, "
+        "f3_R). 'criteria' (rwku only) instead averages across levels and "
+        "breaks out per criteria (ROUGE, Rel, Cor, Flu).",
+    )
+    ap.add_argument(
+        "--split",
+        choices=FORGET_SPLITS,
+        default=None,
+        help="TOFU only. Only show this forget split (default: show forget01, "
+        "forget05, and forget10).",
+    )
+    ap.add_argument(
+        "--method",
+        default=None,
+        help="Only show methods matching this case-insensitive name prefix, plus "
+        "their base (and, for tofu, retain) reference rows.",
+    )
+    ap.add_argument(
+        "--model",
+        default=None,
+        help="Only show models matching this case-insensitive name prefix.",
+    )
+    args = ap.parse_args()
+    if args.eval_dir is None:
+        args.eval_dir = (
+            DEFAULT_RWKU_EVAL_DIR if args.dataset == "rwku" else DEFAULT_EVAL_DIR
+        )
+
+    if args.dataset == "rwku":
+        run_rwku(args)
+    else:
+        run_tofu(args)
 
 if __name__ == "__main__":
     main()

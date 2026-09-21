@@ -19,6 +19,11 @@
 #   METHODS=SDU,GA scripts/dlm/rwku/unlearn.sh llada1.5 0
 #   NUM_SUBJECTS=3 scripts/dlm/rwku/unlearn.sh llada1.5 0
 #   DELETE_CKPT=1 scripts/dlm/rwku/unlearn.sh llada1.5 0  # free ckpts after eval
+#
+# RUN_TAG suffixes the method label used for checkpoints/eval dirs (but not the
+# real trainer), so several hyperparameter variants of the same method can run
+# side by side without colliding -- see sdu_sweep.sh.
+#   SDU_BETA=20 RUN_TAG=b20 METHODS=SDU scripts/dlm/rwku/unlearn.sh dream 0
 set -euo pipefail
 cd "$(dirname "$0")/../../.." || exit 1
 source scripts/dlm/lib.sh
@@ -30,6 +35,11 @@ pin_single_gpu
 load_subjects
 
 SETTING="${SETTING:-train_v1}"
+# RUN_TAG distinguishes parallel hyperparameter-sweep runs of the same method
+# (e.g. different SDU_BETA/SDU_PRESERVE_WEIGHT) so their checkpoints and eval
+# results never collide. Empty by default -- unset, this is a no-op.
+RUN_TAG="${RUN_TAG:-}"
+TAG_SUFFIX="${RUN_TAG:+_${RUN_TAG}}"
 # SDU needs more passes than the gradient-based methods: its loss only shapes
 # the selected entity positions, so a single epoch barely moves the model.
 SDU_EPOCHS="${SDU_EPOCHS:-10}"
@@ -58,10 +68,14 @@ done
 
 # SDU reads its query mask from an offline Monte Carlo cache. The cache is keyed
 # by dataset index, assigned AFTER the subject filter, so each entity needs its
-# own cache built with that same filter.
+# own cache built with that same filter. RUN_TAG is folded into the filename too:
+# without it, parallel sweep configs sharing a subject would race to read/write
+# the same cache file (the cache only depends on SDU_K_PERCENT/SDU_ENTITY_BOOST,
+# so if a sweep doesn't vary those, this just means one cache build per tag
+# instead of one total -- a small price for never colliding).
 sdu_cache_for() {
     local subject=$1 cache
-    cache="saves/sdu_cache/rwku_${MODEL}_$(slug "$subject").json"
+    cache="saves/sdu_cache/rwku_${MODEL}_$(slug "$subject")${TAG_SUFFIX}.json"
     if [[ -f "$cache" ]] && ! flag_on "${OVERWRITE_CACHE:-0}"; then
         echo "$cache"; return
     fi
@@ -143,12 +157,13 @@ echo
 # on disk without retraining.
 for method in "${METHOD_LIST[@]}"; do
     echo "######## ${method} ########"
+    tagged_method="${method}${TAG_SUFFIX}"
     idx=0
     for subject in "${RWKU_SUBJECTS[@]}"; do
         idx=$((idx + 1))
-        outdir=$(eval_dir "${MODEL_KEY}_${method}" "$SETTING" "$idx" "$subject")
-        task="rwku_${MODEL}_${method}_$(slug "$subject")"
-        label="[$idx/${#RWKU_SUBJECTS[@]}] ${method} / ${subject}"
+        outdir=$(eval_dir "${MODEL_KEY}_${tagged_method}" "$SETTING" "$idx" "$subject")
+        task="rwku_${MODEL}_${tagged_method}_$(slug "$subject")"
+        label="[$idx/${#RWKU_SUBJECTS[@]}] ${tagged_method} / ${subject}"
 
         if [[ -f "$outdir/RWKU_SUMMARY.json" ]] && ! flag_on "${OVERWRITE:-0}"; then
             echo "--- ${label}: evaluated already, skip"
