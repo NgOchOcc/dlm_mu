@@ -25,7 +25,29 @@
 # side by side without colliding -- see selective_sweep.sh.
 #   SDU_BETA=20 RUN_TAG=b20 METHODS=SDU scripts/dlm/rwku/unlearn.sh dream 0
 set -euo pipefail
-cd "$(dirname "$0")/../../.." || exit 1
+# Locate the repository root without relying on $0: it is not a usable path
+# when the script is sourced, piped in, or copied into a batch spool directory
+# (sbatch), in which case the old `cd $(dirname $0)/../../..` silently landed
+# somewhere else and `source scripts/dlm/lib.sh` failed before any log existed.
+_rwku_root() {
+    local src="${BASH_SOURCE[0]:-}"
+    if [[ -n "$src" && "$src" != "bash" && -e "$src" ]]; then
+        local dir
+        dir=$(cd "$(dirname "$src")/../../.." && pwd) || return 1
+        [[ -f "$dir/scripts/dlm/lib.sh" ]] && { echo "$dir"; return 0; }
+    fi
+    # Fall back to REPO_DIR, then to the working directory the job started in.
+    for dir in "${REPO_DIR:-}" "$PWD"; do
+        [[ -n "$dir" && -f "$dir/scripts/dlm/lib.sh" ]] && { echo "$dir"; return 0; }
+    done
+    return 1
+}
+ROOT_DIR=$(_rwku_root) || {
+    echo "error: cannot locate the repository root (no scripts/dlm/lib.sh found)." >&2
+    echo "       Run this script by its path from a checkout, or set REPO_DIR." >&2
+    exit 1
+}
+cd "$ROOT_DIR" || exit 1
 source scripts/dlm/lib.sh
 source scripts/dlm/rwku/lib_rwku.sh
 
