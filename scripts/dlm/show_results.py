@@ -963,13 +963,247 @@ def run_rwku(args):
     print()
 
 
+
+# ---------------------------------------------------------------- MUSE ------
+
+DEFAULT_MUSE_EVAL_DIR = Path("saves/eval")
+
+# saves/eval/muse_{MODEL}_{split}_{method}[_{tag}]/MUSE_SUMMARY.json
+_MUSE_RUN_RE = re.compile(r"^muse_(.+?)_(News|Books)_(.+)$")
+
+# Verbatim and knowledge memorisation of the forget set should both drop;
+# retain knowledge should hold.
+MUSE_FORGET_KNOWLEDGE_COMPONENTS = {
+    "forget_knowmem_ROUGE": "lower",
+    "forget_verbmem_ROUGE": "lower",
+}
+MUSE_FORGET_JUDGE_COMPONENTS = {
+    "forget_knowmem_Relevance": "judge_higher",
+    "forget_verbmem_Relevance": "judge_higher",
+    "forget_knowmem_Correctness": "judge_lower",
+    "forget_verbmem_Correctness": "judge_lower",
+}
+MUSE_FORGET_LINGUISTIC_COMPONENTS = {
+    "forget_knowmem_Fluency": "judge_higher",
+    "forget_verbmem_Fluency": "judge_higher",
+}
+MUSE_RETAIN_KNOWLEDGE_COMPONENTS = {"retain_knowmem_ROUGE": "higher"}
+MUSE_RETAIN_JUDGE_COMPONENTS = {
+    "retain_knowmem_Relevance": "judge_higher",
+    "retain_knowmem_Correctness": "judge_higher",
+}
+MUSE_RETAIN_LINGUISTIC_COMPONENTS = {"retain_knowmem_Fluency": "judge_higher"}
+
+MUSE_RAW_KEYS = (
+    set(MUSE_FORGET_KNOWLEDGE_COMPONENTS)
+    | set(MUSE_FORGET_JUDGE_COMPONENTS)
+    | set(MUSE_FORGET_LINGUISTIC_COMPONENTS)
+    | set(MUSE_RETAIN_KNOWLEDGE_COMPONENTS)
+    | set(MUSE_RETAIN_JUDGE_COMPONENTS)
+    | set(MUSE_RETAIN_LINGUISTIC_COMPONENTS)
+)
+MUSE_JUDGE_METRICS = (
+    set(MUSE_FORGET_JUDGE_COMPONENTS)
+    | set(MUSE_FORGET_LINGUISTIC_COMPONENTS)
+    | set(MUSE_RETAIN_JUDGE_COMPONENTS)
+    | set(MUSE_RETAIN_LINGUISTIC_COMPONENTS)
+)
+MUSE_LOWER_BETTER = {
+    "forget_knowmem_ROUGE",
+    "forget_verbmem_ROUGE",
+    "forget_knowmem_Correctness",
+    "forget_verbmem_Correctness",
+}
+
+MUSE_GROUPS = [
+    ("Forget", [("forget_quality", "EQ"), ("forget_linguistic", "LQ")]),
+    ("Retain", [("retain_quality", "MU"), ("retain_linguistic", "LQ")]),
+]
+
+MUSE_DETAIL_GROUPS = [
+    ("Forget", [
+        ("forget_knowmem_ROUGE", "fk_R"),
+        ("forget_verbmem_ROUGE", "fv_R"),
+        ("forget_knowmem_Relevance", "fk_Rel"),
+        ("forget_verbmem_Relevance", "fv_Rel"),
+        ("forget_knowmem_Correctness", "fk_Cor"),
+        ("forget_verbmem_Correctness", "fv_Cor"),
+        ("forget_knowmem_Fluency", "fk_Flu"),
+        ("forget_verbmem_Fluency", "fv_Flu"),
+    ]),
+    ("Retain", [
+        ("retain_knowmem_ROUGE", "rk_R"),
+        ("retain_knowmem_Relevance", "rk_Rel"),
+        ("retain_knowmem_Correctness", "rk_Cor"),
+        ("retain_knowmem_Fluency", "rk_Flu"),
+    ]),
+]
+
+MUSE_METHOD_ORDER = {
+    "full": 0, "GA": 1, "GD": 2, "NPO": 3, "SimNPO": 4,
+    "WGA": 5, "BST": 6, "SelectiveUnlearning": 7, "SDU": 8, "DiRU": 8,
+}
+
+
+def discover_muse_runs(eval_root):
+    """[(model, split, method, run_dir), ...] for saves/eval/muse_*."""
+    runs = []
+    if not eval_root.is_dir():
+        return runs
+    for run_dir in sorted(eval_root.glob("muse_*")):
+        if not run_dir.is_dir():
+            continue
+        match = _MUSE_RUN_RE.match(run_dir.name)
+        if match:
+            runs.append((match.group(1), match.group(2), match.group(3), run_dir))
+    return runs
+
+
+def load_muse_run(run_dir):
+    """Raw metrics for one run, merging the judge scores over the summary."""
+    summary = _read_json(run_dir / "MUSE_SUMMARY.json") or {}
+    judge = _read_json(run_dir / "LLM_JUDGE_COMPLETE.json") or {}
+    merged = dict(summary)
+    if isinstance(judge.get("metrics"), dict):
+        merged.update(judge["metrics"])
+    values = {
+        key: merged[key]
+        for key in MUSE_RAW_KEYS
+        if isinstance(merged.get(key), (int, float))
+    }
+    return values or None
+
+
+def compute_muse_scores(raw):
+    data = dict(raw)
+
+    forget_scores = []
+    for split in ("knowmem", "verbmem"):
+        rouge = _score_unit(data.get(f"forget_{split}_ROUGE"), "lower")
+        relevance = _score_unit(data.get(f"forget_{split}_Relevance"), "judge_higher")
+        correctness = _score_unit(data.get(f"forget_{split}_Correctness"), "judge_lower")
+        score = _hmean([rouge, relevance, correctness])
+        if score is not None:
+            forget_scores.append(score)
+    if forget_scores:
+        data["forget_quality"] = _amean(forget_scores)
+    forget_linguistic = _component_amean(data, MUSE_FORGET_LINGUISTIC_COMPONENTS)
+    if forget_linguistic is not None:
+        data["forget_linguistic"] = forget_linguistic
+
+    rouge = _score_unit(data.get("retain_knowmem_ROUGE"), "higher")
+    relevance = _score_unit(data.get("retain_knowmem_Relevance"), "judge_higher")
+    correctness = _score_unit(data.get("retain_knowmem_Correctness"), "judge_higher")
+    retain_quality = _hmean([rouge, relevance, correctness])
+    if retain_quality is not None:
+        data["retain_quality"] = retain_quality
+    retain_linguistic = _component_amean(data, MUSE_RETAIN_LINGUISTIC_COMPONENTS)
+    if retain_linguistic is not None:
+        data["retain_linguistic"] = retain_linguistic
+
+    return data
+
+
+def _muse_method_rank(label):
+    return (MUSE_METHOD_ORDER.get(label, 99), label)
+
+
+def collect_muse_rows(runs, model, split):
+    """Rows for one (model, split): the SFT reference first, then methods."""
+    rows = []
+    for m, sp, method, run_dir in runs:
+        if m != model or sp != split or method != "full":
+            continue
+        raw = load_muse_run(run_dir)
+        if raw is not None:
+            rows.append(("sft (full)", compute_muse_scores(raw)))
+
+    methods = []
+    for m, sp, method, run_dir in runs:
+        if m != model or sp != split or method == "full":
+            continue
+        raw = load_muse_run(run_dir)
+        if raw is None:
+            continue
+        label = method[len("Diffusion"):] if method.startswith("Diffusion") else method
+        methods.append((label, compute_muse_scores(raw)))
+    methods.sort(key=lambda r: _muse_method_rank(r[0]))
+    rows.extend(methods)
+    return rows
+
+
+def run_muse(args):
+    eval_root = args.eval_dir
+    runs = discover_muse_runs(eval_root)
+    models = [
+        model
+        for model in sorted({m for m, _, _, _ in runs})
+        if _model_matches(model, args.model)
+    ]
+    splits = sorted({sp for _, sp, _, _ in runs})
+    if args.data_split:
+        splits = [sp for sp in splits if sp == args.data_split]
+
+    if args.detail:
+        groups = MUSE_DETAIL_GROUPS
+        judge_metrics = MUSE_JUDGE_METRICS
+        lower_better = MUSE_LOWER_BETTER
+    else:
+        groups = MUSE_GROUPS
+        judge_metrics = set()
+        lower_better = set()
+    cols = [(key, header) for _, group_cols in groups for key, header in group_cols]
+    detail_label = " [DETAIL]" if args.detail else ""
+
+    rendered = False
+    for split in splits:
+        model_rows = {}
+        present = []
+        for model in models:
+            rows = collect_muse_rows(runs, model, split)
+            if args.method is not None:
+                rows = [
+                    (label, data)
+                    for label, data in rows
+                    if label.startswith("sft")
+                    or _normalized_name(label).startswith(_normalized_name(args.method))
+                ]
+            block = dict(rows)
+            if not block:
+                continue
+            present.append(model)
+            model_rows[model] = block
+
+        if not model_rows:
+            continue
+        rendered = True
+        print_table(
+            f"MUSE {split}{detail_label}",
+            model_rows,
+            present,
+            "sft (full)",
+            groups,
+            cols,
+            judge_metrics,
+            lower_better,
+        )
+
+    if not rendered:
+        print("\nNo MUSE results found.")
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument(
         "--dataset",
-        choices=["tofu", "rwku"],
+        choices=["tofu", "rwku", "muse"],
         default="tofu",
         help="Which evaluation results to render (default: tofu).",
+    )
+    ap.add_argument(
+        "--data-split",
+        choices=["News", "Books"],
+        default=None,
+        help="MUSE only. Render just this corpus (default: every split found).",
     )
     ap.add_argument(
         "--eval-dir",
@@ -1019,12 +1253,15 @@ def main():
     )
     args = ap.parse_args()
     if args.eval_dir is None:
-        args.eval_dir = (
-            DEFAULT_RWKU_EVAL_DIR if args.dataset == "rwku" else DEFAULT_EVAL_DIR
-        )
+        args.eval_dir = {
+            "rwku": DEFAULT_RWKU_EVAL_DIR,
+            "muse": DEFAULT_MUSE_EVAL_DIR,
+        }.get(args.dataset, DEFAULT_EVAL_DIR)
 
     if args.dataset == "rwku":
         run_rwku(args)
+    elif args.dataset == "muse":
+        run_muse(args)
     else:
         run_tofu(args)
 
