@@ -5,9 +5,14 @@ export NCCL_IB_DISABLE=1
 # hammering the Triton/Inductor autotune cache there causes DeepSpeed imports
 # to stall or hang on exit. Redirect to local (non-NFS) disk unless the caller
 # already set these.
-export TRITON_CACHE_DIR="${TRITON_CACHE_DIR:-/tmp/${USER}/triton_cache}"
-export TORCHINDUCTOR_CACHE_DIR="${TORCHINDUCTOR_CACHE_DIR:-/tmp/${USER}/inductor_cache}"
-mkdir -p "$TRITON_CACHE_DIR" "$TORCHINDUCTOR_CACHE_DIR"
+# $USER is not exported in every batch environment (Slurm sets SLURM_JOB_USER
+# instead), and callers run with `set -u`, so referencing it bare aborts the
+# script here -- before any log file exists, which looks like the job completing
+# instantly with no output.
+_CACHE_USER="${USER:-${SLURM_JOB_USER:-${LOGNAME:-$(id -un 2>/dev/null || echo user)}}}"
+export TRITON_CACHE_DIR="${TRITON_CACHE_DIR:-/tmp/${_CACHE_USER}/triton_cache}"
+export TORCHINDUCTOR_CACHE_DIR="${TORCHINDUCTOR_CACHE_DIR:-/tmp/${_CACHE_USER}/inductor_cache}"
+mkdir -p "$TRITON_CACHE_DIR" "$TORCHINDUCTOR_CACHE_DIR" 2>/dev/null || true
 
 die() { echo "error: $*" >&2; exit 1; }
 flag_on() {
@@ -18,14 +23,25 @@ flag_on() {
 }
 
 detect_gpus() {
-    if [[ -n "${CUDA_VISIBLE_DEVICES:-}" ]]; then
-        echo "$CUDA_VISIBLE_DEVICES"
-        return
-    fi
     local n
-    n=$(nvidia-smi --query-gpu=index --format=csv,noheader 2>/dev/null | wc -l)
+    if [[ -n "${CUDA_VISIBLE_DEVICES:-}" ]]; then
+        # CUDA renumbers the visible devices to 0..N-1 inside the process, so
+        # the physical ids in CUDA_VISIBLE_DEVICES are not usable as indices:
+        # under a Slurm allocation of GPUs 2,3,6,7 the device to address as 0 is
+        # physical 2. Count them and emit logical ids instead.
+        n=$(awk -F',' '{c=0; for (i=1; i<=NF; i++) if ($i ~ /[0-9]/) c++; print c}' \
+            <<< "$CUDA_VISIBLE_DEVICES")
+    else
+        n=$(nvidia-smi --query-gpu=index --format=csv,noheader 2>/dev/null | wc -l)
+    fi
     (( n > 0 )) || { echo 0; return; }
-    seq -s, 0 $((n - 1))
+    # BSD seq leaves a trailing separator, which would end up inside
+    # CUDA_VISIBLE_DEVICES; build the list directly instead.
+    local i out=""
+    for ((i = 0; i < n; i++)); do
+        out+="${out:+,}$i"
+    done
+    echo "$out"
 }
 GPUS="${GPUS:-$(detect_gpus)}"
 ngpus() { awk -F',' '{n=0; for (i=1; i<=NF; i++) if ($i ~ /[0-9]/) n++; print n}' <<< "$1"; }

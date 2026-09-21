@@ -155,7 +155,7 @@ echo "  model    : ${MODEL_KEY} (${MODEL}) <- ${BASE_CKPT}"
 echo "  methods  : ${METHOD_LIST[*]}"
 echo "  entities : ${#RWKU_SUBJECTS[@]}"
 echo "  setting  : ${SETTING}  (lr ${LR}, bs ${BS})"
-echo "  epochs   : ${EPOCHS} (${SDU_EPOCHS} for SDU)"
+echo "  epochs   : ${EPOCHS} (${SDU_EPOCHS} for SDU/SelectiveUnlearning)"
 echo "  runs     : $(( ${#METHOD_LIST[@]} * ${#RWKU_SUBJECTS[@]} ))"
 echo
 
