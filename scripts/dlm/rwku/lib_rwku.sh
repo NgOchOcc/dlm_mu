@@ -1,9 +1,25 @@
 RWKU_SUBJECTS_FILE="${RWKU_SUBJECTS_FILE:-scripts/dlm/rwku/subjects.txt}"
 
-# RWKU runs on a single GPU for both training and evaluation, so the whole
-# pipeline is pinned to one device via GPUS.
-EVAL_ACCEL_1GPU="${EVAL_ACCEL_1GPU:-configs/accelerate/eval_1gpu.yaml}"
+# Training shards the model across every GPU in GPUS (ZeRO-3), while evaluation
+# runs on one of them: the evaluators do not split data across ranks -- each
+# rank recomputes the whole metric and only rank 0 writes results
+# (evals/base.py:save_logs) -- so extra eval processes duplicate the work and
+# hold extra copies of the model.
+TRAIN_ACCEL_MULTI="${TRAIN_ACCEL_MULTI:-configs/accelerate/dlm_config.yaml}"
 TRAIN_ACCEL_1GPU="${TRAIN_ACCEL_1GPU:-configs/accelerate/dlm_1gpu.yaml}"
+EVAL_ACCEL_1GPU="${EVAL_ACCEL_1GPU:-configs/accelerate/eval_1gpu.yaml}"
+
+# Accelerate config + process count for training on the current GPUS.
+train_accel() {
+    if [[ "$(ngpus "$GPUS")" -gt 1 ]]; then
+        echo "$TRAIN_ACCEL_MULTI"
+    else
+        echo "$TRAIN_ACCEL_1GPU"
+    fi
+}
+
+# The single device evaluation runs on: the first of GPUS.
+eval_gpu() { echo "${GPUS%%,*}"; }
 
 # Distinct port ranges per GPU.
 #
@@ -22,6 +38,8 @@ PORT_STRIDE="${PORT_STRIDE:-200}"
 
 port_base() {
     local kind=$1 dev base off
+    # Offset by the first device so concurrently launched runs on different
+    # GPUs still start probing in disjoint ranges; free_port handles the rest.
     dev="${GPUS%%,*}"
     [[ "$dev" =~ ^[0-9]+$ ]] || dev=0
     base="${RWKU_PORT_BASE:-29000}"
@@ -35,15 +53,10 @@ port_base() {
 
 # Pin the whole pipeline (training and evaluation) to one device.
 #
-# GPUS may arrive as a list -- either from the caller or from lib.sh's
-# auto-detect -- so narrow it to the first entry and say so, rather than
-# silently using a device the caller did not expect.
-pin_single_gpu() {
-    if [[ "$(ngpus "$GPUS")" -gt 1 ]]; then
-        echo "note: RWKU runs on one GPU; using device ${GPUS%%,*} of '${GPUS}'" >&2
-    fi
-    GPUS="${GPUS%%,*}"
-    [[ -n "$GPUS" ]] || die "no GPU available (GPUS is empty)"
+# GPUS must name at least one device; lib.sh fills it in by auto-detect when the
+# caller gives nothing.
+require_gpus() {
+    [[ -n "${GPUS:-}" ]] || die "no GPU available (GPUS is empty)"
 }
 
 load_subjects() {
@@ -80,7 +93,7 @@ rwku_eval() {
     # every rank recomputes the whole metric and only rank 0 writes results
     # (evals/base.py:save_logs) -- so extra processes only duplicate the work
     # and hold extra model copies.
-    CUDA_VISIBLE_DEVICES=${GPUS} accelerate launch \
+    CUDA_VISIBLE_DEVICES=$(eval_gpu) accelerate launch \
         --config_file "${EVAL_ACCEL_1GPU}" --num_processes 1 \
         --main_process_port "${port}" \
         src/eval.py \

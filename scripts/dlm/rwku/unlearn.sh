@@ -31,7 +31,7 @@ source scripts/dlm/rwku/lib_rwku.sh
 
 MODEL_KEY="${1:-llada1.5}"
 dlm_config "$MODEL_KEY" "${2:-$GPUS}"
-pin_single_gpu
+require_gpus
 load_subjects
 
 SETTING="${SETTING:-train_v1}"
@@ -81,7 +81,7 @@ sdu_cache_for() {
     fi
     mkdir -p "$(dirname "$cache")"
     echo "--- precomputing SDU mask cache: $cache" >&2
-    CUDA_VISIBLE_DEVICES=${GPUS} python scripts/dlm/sdu_precompute.py \
+    CUDA_VISIBLE_DEVICES=$(eval_gpu) python scripts/dlm/sdu_precompute.py \
         --model-dir "$BASE_CKPT" \
         --dataset-path jinzhuoran/RWKU \
         --dataset-name train_pair_llama3 \
@@ -122,10 +122,10 @@ run_one() {
     esac
 
     assert_gpus
-    pin_single_gpu
+    require_gpus
     local port; port=$(free_port "$(port_base train)")
     CUDA_VISIBLE_DEVICES=${GPUS} accelerate launch \
-        --config_file "${TRAIN_ACCEL_1GPU}" --num_processes 1 \
+        --config_file "$(train_accel)" --num_processes "$(ngpus "$GPUS")" \
         --main_process_port "${port}" \
         src/train.py --config-name=unlearn.yaml \
         experiment="${exp}" \

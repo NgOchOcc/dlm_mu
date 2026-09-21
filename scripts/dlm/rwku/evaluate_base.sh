@@ -7,8 +7,9 @@
 #
 # Results land in eval/RWKU/{model}_base/{setting}/{NN_entity}/RWKU_SUMMARY.json
 #
-# Runs on ONE GPU, named by GPUS. To use several GPUs, launch several copies
-# with different GPUS and entity subsets.
+# Evaluation runs on ONE GPU (the first of GPUS): the evaluators do not shard
+# across ranks. To use several GPUs, launch several copies with different GPUS
+# and entity subsets.
 #
 #   GPUS=0 scripts/dlm/rwku/evaluate_base.sh                 # both models
 #   GPUS=0 MODELS=llada1.5 scripts/dlm/rwku/evaluate_base.sh # one model
@@ -24,7 +25,7 @@ MODELS="${MODELS:-dream llada1.5}"
 
 for model_key in $MODELS; do
     dlm_config "$model_key" "${GPUS}"
-    pin_single_gpu
+    require_gpus
     load_subjects
     ckpt=$(rwku_base_ckpt)
     echo "=== base eval: ${model_key} (${MODEL}) <- ${ckpt} ==="
@@ -37,7 +38,7 @@ for model_key in $MODELS; do
             echo "--- [$idx/${#RWKU_SUBJECTS[@]}] $subject: exists, skip (OVERWRITE=1 to redo)"
             continue
         fi
-        echo "--- [$idx/${#RWKU_SUBJECTS[@]}] $subject -> gpu ${GPUS} -> $outdir"
+        echo "--- [$idx/${#RWKU_SUBJECTS[@]}] $subject -> gpu $(eval_gpu) -> $outdir"
         rwku_eval "$ckpt" "$outdir" "$subject"
     done
 done
