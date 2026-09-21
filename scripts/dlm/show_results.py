@@ -749,7 +749,10 @@ RWKU_CRITERIA_GROUPS = [
 
 RWKU_METHOD_ORDER = {"BST": 0, "WGA": 1, "NPO": 2, "SDU": 3}
 
-_RWKU_RUN_RE = re.compile(r"^(.+?)_(base|Diffusion[A-Za-z0-9]+)$")
+# The trailing group captures the optional RUN_TAG that hyperparameter sweeps
+# append (e.g. "..._DiffusionSDU_b10_pw0.1"); without it those runs were
+# skipped entirely, so a tuning sweep produced an empty table.
+_RWKU_RUN_RE = re.compile(r"^(.+?)_(base|Diffusion[A-Za-z0-9]+)((?:_[^_]+)*)$")
 _RWKU_ENTITY_DIR_RE = re.compile(r"^\d+_(.+)$")
 
 
@@ -762,7 +765,7 @@ def discover_rwku_runs(eval_root):
         match = _RWKU_RUN_RE.match(run_dir.parent.name)
         if not match:
             continue
-        runs.append((match.group(1), match.group(2), run_dir))
+        runs.append((match.group(1), match.group(2) + match.group(3), run_dir))
     return sorted(runs)
 
 
@@ -837,12 +840,15 @@ def compute_rwku_scores(averaged):
         data, ["neighbor_level1_Fluency", "neighbor_level2_Fluency"]
     )
 
+    # Forget: average(1 - rouge, 1 - correctness, relevance). _score_unit
+    # already applies the 1 - x inversion for the "lower is better" directions,
+    # so the three terms are combined with a plain arithmetic mean.
     forget_level_scores = []
     for level in (1, 2, 3):
         rouge = _score_unit(data.get(f"forget_level{level}_ROUGE"), "lower")
         relevance = _score_unit(data.get(f"forget_level{level}_Relevance"), "judge_higher")
         correctness = _score_unit(data.get(f"forget_level{level}_Correctness"), "judge_lower")
-        level_score = _hmean([rouge, relevance, correctness])
+        level_score = _amean([rouge, relevance, correctness])
         if level_score is not None:
             forget_level_scores.append(level_score)
     forget_quality = _amean(forget_level_scores) if forget_level_scores else None
@@ -852,12 +858,13 @@ def compute_rwku_scores(averaged):
     if forget_linguistic is not None:
         data["forget_linguistic"] = forget_linguistic
 
+    # Retain: average(rouge, correctness, relevance) -- all three kept as-is.
     neighbor_level_scores = []
     for level in (1, 2):
         rouge = _score_unit(data.get(f"neighbor_level{level}_ROUGE"), "higher")
         relevance = _score_unit(data.get(f"neighbor_level{level}_Relevance"), "judge_higher")
         correctness = _score_unit(data.get(f"neighbor_level{level}_Correctness"), "judge_higher")
-        level_score = _hmean([rouge, relevance, correctness])
+        level_score = _amean([rouge, relevance, correctness])
         if level_score is not None:
             neighbor_level_scores.append(level_score)
     neighbor_quality = _amean(neighbor_level_scores) if neighbor_level_scores else None
