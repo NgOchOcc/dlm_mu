@@ -499,11 +499,16 @@ def _method_rank(label):
     )
 
 
-def _label_order(label, retain_name):
+def _label_order(label, retain_name, order_map=None):
     if label == "base":
         return (0, "", False, 0)
     if label == retain_name:
         return (1, "", False, 0)
+    if order_map is not None:
+        # RWKU/MUSE supply their own ordering, and their labels carry RUN_TAG
+        # suffixes that _method_rank's TOFU-specific parsing does not know.
+        rank, _ = _ranked_by_order(label, order_map)
+        return (2 + rank, label, False, 0)
     order, base_method, is_forget_only, epochs = _method_rank(label)
     return (2 + order, base_method, is_forget_only, epochs)
 
@@ -522,11 +527,12 @@ def _visible(s):
     return len(_ANSI.sub("", s))
 
 
-def print_table(title, model_rows, models, retain_name, groups, cols, judge_metrics, lower_better):
+def print_table(title, model_rows, models, retain_name, groups, cols, judge_metrics,
+                lower_better, order_map=None):
     group_one, metric_one = _group_header(groups)
     block_w = len(metric_one)
     all_labels = set().union(*(rows.keys() for rows in model_rows.values()))
-    labels = sorted(all_labels, key=lambda lbl: _label_order(lbl, retain_name))
+    labels = sorted(all_labels, key=lambda lbl: _label_order(lbl, retain_name, order_map))
     label_w = max([LABEL_W] + [len(lbl) for lbl in labels])
     widths = [label_w] + [block_w] * len(models)
     col_ranks_per_model = {}
@@ -773,7 +779,12 @@ RWKU_CRITERIA_GROUPS = [
     ]),
 ]
 
-RWKU_METHOD_ORDER = {"BST": 0, "WGA": 1, "NPO": 2, "SDU": 3}
+# Display order: gradient-based baselines first, then the selective methods.
+# Anything unlisted sorts last, alphabetically.
+RWKU_METHOD_ORDER = {
+    "GA": 0, "GD": 1, "NPO": 2, "SimNPO": 3, "WGA": 4, "BST": 5,
+    "SelectiveUnlearning": 6, "SDU": 7, "DiRU": 7,
+}
 
 # The trailing group captures the optional RUN_TAG that hyperparameter sweeps
 # append (e.g. "..._DiffusionSDU_b10_pw0.1"); without it those runs were
@@ -930,8 +941,25 @@ def compute_rwku_scores(averaged):
     return data
 
 
+def _ranked_by_order(label, order):
+    """Rank a method label, ignoring any RUN_TAG suffix.
+
+    Sweep runs arrive as "SDU_b10_pw0.1"; ranking on the bare method name keeps
+    every variant of a method together instead of scattering them alphabetically
+    among the unlisted names.
+    """
+    base = label
+    while base:
+        if base in order:
+            return (order[base], label)
+        if "_" not in base:
+            break
+        base = base.rsplit("_", 1)[0]
+    return (99, label)
+
+
 def _rwku_method_rank(label):
-    return (RWKU_METHOD_ORDER.get(label, 99), label)
+    return _ranked_by_order(label, RWKU_METHOD_ORDER)
 
 
 def collect_rwku_rows(runs, model):
@@ -1010,11 +1038,13 @@ def run_rwku(args):
                 f"RWKU — {model}{detail_label}",
                 {model: model_rows[model]}, [model], None,
                 groups, cols, judge_metrics, lower_better,
+                order_map=RWKU_METHOD_ORDER,
             )
     else:
         print_table(
             f"RWKU{detail_label}", model_rows, present, None,
             groups, cols, judge_metrics, lower_better,
+            order_map=RWKU_METHOD_ORDER,
         )
     print()
 
@@ -1161,7 +1191,7 @@ def compute_muse_scores(raw):
 
 
 def _muse_method_rank(label):
-    return (MUSE_METHOD_ORDER.get(label, 99), label)
+    return _ranked_by_order(label, MUSE_METHOD_ORDER)
 
 
 def collect_muse_rows(runs, model, split):
@@ -1242,6 +1272,7 @@ def run_muse(args):
             cols,
             judge_metrics,
             lower_better,
+            order_map=MUSE_METHOD_ORDER,
         )
 
     if not rendered:
