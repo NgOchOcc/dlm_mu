@@ -1,0 +1,47 @@
+# @package _global_
+# Second SFT phase for MUSE: teach the QA format on top of the corpus-finetuned
+# model produced by finetune/muse/dlm.yaml.
+#
+# Unlearning and evaluation both operate on the knowmem QA splits, while the
+# first phase trains on raw text (MUSE_train, PretrainingDataset). Without this
+# phase the model is evaluated in a format it was never trained on, so its
+# knowmem scores reflect the format gap as much as the memorised content.
+#
+# Start from the phase-1 checkpoint, e.g.
+#   model.model_args.pretrained_model_name_or_path=saves/finetune/muse_<MODEL>_<split>_full
+defaults:
+  - override /model: LLaDA-8B-Instruct
+  - override /trainer: DiffusionFinetune
+  - override /data/datasets@data.train: MUSE_knowmem_sft
+  - override /eval: muse_dlm
+  - override /data: finetune
+
+mode: finetune
+data_split: News
+
+# Dream needs right-shifted logits and CART loss weighting; LLaDA does not.
+#   trainer.method_args.right_shift_logits: True
+#   trainer.method_args.loss_weight_type: "cart[geo_p:0.3]"
+#   eval.muse_dlm.right_shift_logits: True
+
+data:
+  train:
+    MUSE_knowmem_sft:
+      args:
+        hf_args:
+          path: muse-bench/MUSE-${data_split}
+
+eval:
+  muse_dlm:
+    data_split: ${data_split}
+    overwrite: true
+
+# Only 200 QA pairs here, so this phase is short compared with the corpus SFT.
+trainer:
+  args:
+    learning_rate: 1e-5
+    weight_decay: 0.01
+    warmup_epochs: 1.0
+    num_train_epochs: 5
+
+task_name: ???

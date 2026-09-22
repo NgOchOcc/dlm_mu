@@ -13,10 +13,13 @@
 # the built-in heuristic. Set METHOD=SDU for the variant that reads them from
 # the offline Monte Carlo cache instead; both take the same two knobs.
 #
+# Usage: selective_sweep.sh [models] [gpus] [splits]
+#
 #   scripts/dlm/muse/selective_sweep.sh
-#   BETAS="2 5 10 20 50" scripts/dlm/muse/selective_sweep.sh
-#   MODELS="llada1.5" DATA_SPLITS="News" scripts/dlm/muse/selective_sweep.sh
-#   METHOD=SDU scripts/dlm/muse/selective_sweep.sh
+#   scripts/dlm/muse/selective_sweep.sh dream 0,1,2,3
+#   scripts/dlm/muse/selective_sweep.sh "dream llada1.5" 0,1,2,3 News
+#   BETAS="2 5 10 20 50" scripts/dlm/muse/selective_sweep.sh dream 0,1,2,3
+#   METHOD=SDU scripts/dlm/muse/selective_sweep.sh dream 0,1,2,3
 set -euo pipefail
 # Run from the repository root; see scripts/dlm/muse/run.sh for why this checks
 # instead of cd-ing.
@@ -26,9 +29,11 @@ if [[ ! -f scripts/dlm/lib.sh ]]; then
 fi
 source scripts/dlm/lib.sh
 
-MODELS="${MODELS:-dream llada1.5}"
-DEVICES="${1:-$GPUS}"
-DATA_SPLITS="${DATA_SPLITS:-News Books}"
+# Argument order matches scripts/dlm/rwku/selective_sweep.sh: models first,
+# then GPUs. Pass "dream llada1.5" (quoted) to sweep both in turn.
+MODELS="${1:-${MODELS:-dream llada1.5}}"
+DEVICES="${2:-$GPUS}"
+DATA_SPLITS="${3:-${DATA_SPLITS:-News Books}}"
 
 METHOD="${METHOD:-SelectiveUnlearning}"
 [[ "$METHOD" == Diffusion* ]] || METHOD="Diffusion${METHOD}"
@@ -37,7 +42,8 @@ METHOD="${METHOD:-SelectiveUnlearning}"
 BETAS="${BETAS:-2 5 10 20 50}"
 PRESERVE_WEIGHTS="${PRESERVE_WEIGHTS:-0.1}"
 
-[[ -n "$DEVICES" ]] || die "no GPUs given (got '$DEVICES')"
+[[ -n "$DEVICES" ]] || die "no GPUs: pass them as the second argument, e.g. \
+    scripts/dlm/muse/selective_sweep.sh dream 0,1,2,3"
 
 CONFIGS=()
 for beta in $BETAS; do

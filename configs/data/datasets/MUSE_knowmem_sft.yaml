@@ -1,0 +1,19 @@
+# MUSE knowmem QA, both splits, for the second SFT phase.
+#
+# The corpus SFT (MUSE_train) teaches the facts as raw text, but unlearning and
+# evaluation both run on the knowmem QA format -- so without this phase the
+# model is asked questions in a format it has never been trained on. Training
+# on forget_qa and retain_qa together mirrors what the evaluation measures.
+#
+# The `a+b` split syntax concatenates both splits into one dataset; no few-shot
+# prompts here, since this is training rather than the ICL-prompted evaluation.
+MUSE_knowmem_sft:
+  handler: QADataset
+  args:
+    hf_args:
+      path: "muse-bench/MUSE-News"
+      name: "knowmem"
+      split: "forget_qa+retain_qa"
+    question_key: "question"
+    answer_key: "answer"
+    max_length: 512

@@ -30,6 +30,9 @@
 #   OVERWRITE=1                redo work that already has results on disk
 #   UNLEARN_EPOCHS             epochs for every method except SDU (default: 2)
 #   SDU_EPOCHS                 epochs for SDU/SelectiveUnlearning (default: 10)
+#   NO_UNLEARN=1               stop after the SFT phases
+#   KNOWMEM_SFT=0              skip the knowmem QA SFT phase (default: on)
+#   KNOWMEM_SFT_EPOCHS         epochs for that phase (default: 5)
 #   RUN_TAG                    suffix for checkpoint/eval names (sweeps)
 #   TRAIN_BS / GRAD_ACCUM / SDU_BETA / SDU_PRESERVE_WEIGHT
 #                              other hyperparameter overrides
@@ -56,6 +59,8 @@ DATA_SPLITS="${3:-News Books}"
 
 UNLEARN_EPOCHS="${UNLEARN_EPOCHS:-2}"
 SDU_EPOCHS="${SDU_EPOCHS:-10}"
+KNOWMEM_SFT="${KNOWMEM_SFT:-1}"
+KNOWMEM_SFT_EPOCHS="${KNOWMEM_SFT_EPOCHS:-5}"
 RUN_TAG="${RUN_TAG:-}"
 TAG_SUFFIX="${RUN_TAG:+_${RUN_TAG}}"
 
@@ -63,6 +68,37 @@ parse_methods "${METHODS:-DiffusionGA,DiffusionGD,DiffusionNPO,DiffusionSimNPO,D
 
 echo "[muse] models=${MODEL_KINDS} splits=${DATA_SPLITS}" >&2
 echo "[muse] methods: ${METHODS_LIST[*]}" >&2
+
+# ------------------------------------------------- knowmem SFT (phase 2) -----
+
+# Teach the QA format on top of the corpus-finetuned checkpoint.
+#
+# Phase 1 trains on raw text while unlearning and evaluation both use the
+# knowmem QA splits, so without this the model is scored in a format it never
+# saw. Set KNOWMEM_SFT=0 to skip it and unlearn straight from phase 1.
+run_knowmem_sft() {
+    local data_split=$1 start=$2 out_task=$3
+    local port; port=$(free_port "${MAIN_PORT:-29500}")
+    echo "==================== KNOWMEM SFT ${data_split} (${KNOWMEM_SFT_EPOCHS} epochs) ====================" >&2
+    CUDA_VISIBLE_DEVICES=${GPUS} accelerate launch \
+        --config_file "${TRAIN_ACCEL}" --num_processes "${NPROC}" --main_process_port "${port}" \
+        src/train.py \
+        experiment=finetune/muse/dlm_knowmem \
+        model=${MODEL} \
+        model.model_args.pretrained_model_name_or_path="${start}" \
+        task_name="${out_task}" \
+        data_split="${data_split}" \
+        trainer.args.num_train_epochs="${KNOWMEM_SFT_EPOCHS}" \
+        trainer.args.per_device_train_batch_size="${TRAIN_BS}" \
+        trainer.args.gradient_accumulation_steps="${GRAD_ACCUM}" \
+        trainer.args.save_strategy=no \
+        trainer.args.do_eval=false \
+        trainer.args.eval_on_start=false \
+        trainer.args.eval_strategy=no \
+        trainer.method_args.right_shift_logits=${RIGHT_SHIFT} \
+        trainer.method_args.loss_weight_type="\"${LOSS_WEIGHT}\"" \
+        eval.muse_dlm.right_shift_logits=${RIGHT_SHIFT}
+}
 
 # ---------------------------------------------------------------- SFT --------
 # Disabled -- kept for reference. To re-enable, uncomment this function and
@@ -211,6 +247,33 @@ run_for_model() {
         [[ -e "$sft_dir" ]] || { echo "[warn] no SFT checkpoint at ${sft_dir}; skipping ${data_split}" >&2; fail=1; continue; }
         start="$(resolve_ckpt "$sft_dir")"
 
+        # ---- step 1c: knowmem SFT, so the model has seen the QA format ----
+        if flag_on "$KNOWMEM_SFT"; then
+            km_task="muse_${MODEL}_${data_split}_knowmem"
+            km_dir="saves/finetune/${km_task}"
+            if [[ -f "${km_dir}/config.json" ]] && ! flag_on "${OVERWRITE:-}"; then
+                echo "skip  ${km_task} (already trained; OVERWRITE=1 to redo)" >&2
+            elif ! run_knowmem_sft "$data_split" "$start" "$km_task"; then
+                echo "[warn] knowmem SFT FAILED for ${data_split}; skipping" >&2
+                fail=1
+                continue
+            fi
+            start="$(resolve_ckpt "$km_dir")"
+
+            # Evaluate the knowmem checkpoint too: it is the reference every
+            # unlearning run starts from, so its scores are what the methods
+            # are measured against.
+            if ! flag_on "${NO_EVAL:-}" && ! flag_on "${NO_EVAL_SFT:-}"; then
+                if [[ -f "saves/eval/${km_task}/MUSE_SUMMARY.json" ]] \
+                    && ! flag_on "${OVERWRITE:-}"; then
+                    echo "skip  eval ${km_task} (already done)" >&2
+                else
+                    muse_eval "$km_task" "$start" "$data_split" \
+                        || { echo "[warn] eval FAILED for ${km_task}" >&2; fail=1; }
+                fi
+            fi
+        fi
+
         # ---- step 1b: evaluate the SFT checkpoint [DISABLED] ----
         # if flag_on "${NO_EVAL_SFT:-}" || flag_on "${NO_EVAL:-}"; then
         #     :
@@ -223,6 +286,10 @@ run_for_model() {
         # fi
 
         # ---- step 2: unlearn each method ----
+        # NO_UNLEARN=1 stops after the SFT phases, for staging the pipeline.
+        if flag_on "${NO_UNLEARN:-}"; then
+            continue
+        fi
         for trainer in "${METHODS_LIST[@]}"; do
             # RUN_TAG separates hyperparameter-sweep runs of the same method
             # so their checkpoints and eval results never overwrite each other.
