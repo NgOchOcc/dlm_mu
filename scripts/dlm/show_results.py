@@ -839,6 +839,17 @@ def _levels_mean(data, keys):
     return sum(values) / len(values)
 
 
+# Which mean joins the classic and judge halves of each RWKU score, mirroring
+# TOFU's and MUSE's --mean. "arithmetic" is the default; "harmonic" punishes
+# the weaker half, so a model that erases the answer but stops responding
+# coherently cannot score as well as one that stays on topic.
+RWKU_MEAN = "arithmetic"
+
+
+def _rwku_combine(values):
+    return _hmean(values) if RWKU_MEAN == "harmonic" else _amean(values)
+
+
 def compute_rwku_scores(averaged):
     data = dict(averaged)
 
@@ -869,15 +880,23 @@ def compute_rwku_scores(averaged):
         data, ["neighbor_level1_Fluency", "neighbor_level2_Fluency"]
     )
 
-    # Forget: average(1 - rouge, 1 - correctness, relevance). _score_unit
-    # already applies the 1 - x inversion for the "lower is better" directions,
-    # so the three terms are combined with a plain arithmetic mean.
+    # Forget: the classic metric and the two judge metrics are combined as two
+    # halves rather than three equal terms, so ROUGE -- the only objective
+    # signal -- is not outvoted 2:1 by the judge. Higher EQ = better erasure.
+    #
+    #   knowledge = 1 - ROUGE
+    #   judge     = average(Relevance, 1 - Correctness)
+    #   EQ        = combine(knowledge, judge)
+    #
+    # Relevance counts upward on purpose: a model that erased the fact but now
+    # answers off-topic has broken rather than forgotten, and should score
+    # below one that still answers the question without the memorised content.
     forget_level_scores = []
     for level in (1, 2, 3):
         rouge = _score_unit(data.get(f"forget_level{level}_ROUGE"), "lower")
         relevance = _score_unit(data.get(f"forget_level{level}_Relevance"), "judge_higher")
         correctness = _score_unit(data.get(f"forget_level{level}_Correctness"), "judge_lower")
-        level_score = _amean([rouge, relevance, correctness])
+        level_score = _rwku_combine([rouge, _amean([relevance, correctness])])
         if level_score is not None:
             forget_level_scores.append(level_score)
     forget_quality = _amean(forget_level_scores) if forget_level_scores else None
@@ -887,13 +906,14 @@ def compute_rwku_scores(averaged):
     if forget_linguistic is not None:
         data["forget_linguistic"] = forget_linguistic
 
-    # Retain: average(rouge, correctness, relevance) -- all three kept as-is.
+    # Retain: same two-half split, all terms kept as-is (higher is better).
+    #   MU = combine(ROUGE, average(Relevance, Correctness))
     neighbor_level_scores = []
     for level in (1, 2):
         rouge = _score_unit(data.get(f"neighbor_level{level}_ROUGE"), "higher")
         relevance = _score_unit(data.get(f"neighbor_level{level}_Relevance"), "judge_higher")
         correctness = _score_unit(data.get(f"neighbor_level{level}_Correctness"), "judge_higher")
-        level_score = _amean([rouge, relevance, correctness])
+        level_score = _rwku_combine([rouge, _amean([relevance, correctness])])
         if level_score is not None:
             neighbor_level_scores.append(level_score)
     neighbor_quality = _amean(neighbor_level_scores) if neighbor_level_scores else None
@@ -1101,27 +1121,36 @@ def load_muse_run(run_dir):
     return values or None
 
 
+# Which mean combines the MUSE components, mirroring TOFU's --mean. The
+# default is "arithmetic"; "harmonic" punishes the weakest component, so a
+# single zero drives the whole score to zero. Set by --mean.
+MUSE_MEAN = "arithmetic"
+
+
+def _muse_combine(values):
+    return _hmean(values) if MUSE_MEAN == "harmonic" else _amean(values)
+
+
 def compute_muse_scores(raw):
     data = dict(raw)
 
-    # Forget: average(1 - rouge, relevance, 1 - correctness). _score_unit
-    # already applies the 1 - x inversion for the "lower is better" directions,
-    # so the three terms are combined with a plain arithmetic mean.
+    # Forget: combine(1 - rouge, relevance, 1 - correctness). _score_unit
+    # already applies the 1 - x inversion for the "lower is better" directions.
     rouge = _score_unit(data.get("forget_knowmem_ROUGE"), "lower")
     relevance = _score_unit(data.get("forget_knowmem_Relevance"), "judge_higher")
     correctness = _score_unit(data.get("forget_knowmem_Correctness"), "judge_lower")
-    forget_quality = _amean([rouge, relevance, correctness])
+    forget_quality = _muse_combine([rouge, relevance, correctness])
     if forget_quality is not None:
         data["forget_quality"] = forget_quality
     forget_linguistic = _component_amean(data, MUSE_FORGET_LINGUISTIC_COMPONENTS)
     if forget_linguistic is not None:
         data["forget_linguistic"] = forget_linguistic
 
-    # Retain: average(rouge, relevance, correctness) -- all three kept as-is.
+    # Retain: combine(rouge, relevance, correctness) -- all three kept as-is.
     rouge = _score_unit(data.get("retain_knowmem_ROUGE"), "higher")
     relevance = _score_unit(data.get("retain_knowmem_Relevance"), "judge_higher")
     correctness = _score_unit(data.get("retain_knowmem_Correctness"), "judge_higher")
-    retain_quality = _amean([rouge, relevance, correctness])
+    retain_quality = _muse_combine([rouge, relevance, correctness])
     if retain_quality is not None:
         data["retain_quality"] = retain_quality
     retain_linguistic = _component_amean(data, MUSE_RETAIN_LINGUISTIC_COMPONENTS)
@@ -1229,10 +1258,11 @@ def main():
     ap.add_argument(
         "--mean",
         choices=["harmonic", "arithmetic"],
-        default="harmonic",
-        help="TOFU only. How to combine score components: 'harmonic' (default, "
-             "a single weak component drags the score down) or 'arithmetic' "
-             "(components averaged independently, as RWKU does).",
+        default=None,
+        help="How to combine score components: 'harmonic' (a "
+             "single weak component drags the score down) or 'arithmetic' "
+             "(components averaged independently). Defaults to harmonic for "
+             "TOFU and arithmetic for RWKU/MUSE.",
     )
     ap.add_argument(
         "--data-split",
@@ -1287,8 +1317,12 @@ def main():
         help="Only show models matching this case-insensitive name prefix.",
     )
     args = ap.parse_args()
-    # Must be set before load_summary() runs, which happens inside run_tofu().
-    globals()["TOFU_MEAN"] = args.mean
+    # Must be set before the summaries are loaded inside run_tofu()/run_muse().
+    # Each benchmark keeps its own default when --mean is not given.
+    if args.mean is not None:
+        globals()["TOFU_MEAN"] = args.mean
+        globals()["MUSE_MEAN"] = args.mean
+        globals()["RWKU_MEAN"] = args.mean
     if args.eval_dir is None:
         args.eval_dir = {
             "rwku": DEFAULT_RWKU_EVAL_DIR,
