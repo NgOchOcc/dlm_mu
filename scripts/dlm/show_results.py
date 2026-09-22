@@ -282,6 +282,32 @@ def _read_json(path):
         return None
 
 
+# Which mean combines the TOFU components. "harmonic" is the original: it
+# punishes the weakest component, so a single zero drives the whole score to
+# zero. "arithmetic" treats the components as independent and matches how the
+# RWKU scores are computed. Set by --mean; load_summary() reads it, so it must
+# be assigned before any summary is loaded.
+TOFU_MEAN = "harmonic"
+
+
+def _combine(values):
+    return _amean(values) if TOFU_MEAN == "arithmetic" else _hmean(values)
+
+
+def _component_combine(data, components, skip_missing=False):
+    if TOFU_MEAN == "arithmetic":
+        values = [
+            _score_unit(data.get(key), direction)
+            for key, direction in components.items()
+        ]
+        if skip_missing:
+            values = [value for value in values if value is not None]
+            if not values:
+                return None
+        return _amean(values)
+    return _component_hmean(data, components, skip_missing=skip_missing)
+
+
 def load_summary(eval_dir):
     if not eval_dir.is_dir():
         return None
@@ -292,18 +318,18 @@ def load_summary(eval_dir):
     data = _read_json(summary)
     if data is None:
         return None
-    erasing_knowledge = _component_hmean(data, ERASING_KNOWLEDGE_COMPONENTS)
+    erasing_knowledge = _component_combine(data, ERASING_KNOWLEDGE_COMPONENTS)
     erasing_judge = _component_amean(data, ERASING_JUDGE_COMPONENTS)
-    erase_quality = _hmean([erasing_knowledge, erasing_judge])
+    erase_quality = _combine([erasing_knowledge, erasing_judge])
     if erase_quality is not None:
         data["erase_quality"] = erase_quality
 
     dataset_utilities = [
-        _component_hmean(data, components, skip_missing=True)
+        _component_combine(data, components, skip_missing=True)
         for components in UTILITY_COMPONENT_GROUPS
     ]
     dataset_utilities = [value for value in dataset_utilities if value is not None]
-    model_utility = _hmean(dataset_utilities)
+    model_utility = _combine(dataset_utilities)
     if model_utility is not None:
         data["model_utility"] = model_utility
 
@@ -1078,20 +1104,24 @@ def load_muse_run(run_dir):
 def compute_muse_scores(raw):
     data = dict(raw)
 
+    # Forget: average(1 - rouge, relevance, 1 - correctness). _score_unit
+    # already applies the 1 - x inversion for the "lower is better" directions,
+    # so the three terms are combined with a plain arithmetic mean.
     rouge = _score_unit(data.get("forget_knowmem_ROUGE"), "lower")
     relevance = _score_unit(data.get("forget_knowmem_Relevance"), "judge_higher")
     correctness = _score_unit(data.get("forget_knowmem_Correctness"), "judge_lower")
-    forget_quality = _hmean([rouge, relevance, correctness])
+    forget_quality = _amean([rouge, relevance, correctness])
     if forget_quality is not None:
         data["forget_quality"] = forget_quality
     forget_linguistic = _component_amean(data, MUSE_FORGET_LINGUISTIC_COMPONENTS)
     if forget_linguistic is not None:
         data["forget_linguistic"] = forget_linguistic
 
+    # Retain: average(rouge, relevance, correctness) -- all three kept as-is.
     rouge = _score_unit(data.get("retain_knowmem_ROUGE"), "higher")
     relevance = _score_unit(data.get("retain_knowmem_Relevance"), "judge_higher")
     correctness = _score_unit(data.get("retain_knowmem_Correctness"), "judge_higher")
-    retain_quality = _hmean([rouge, relevance, correctness])
+    retain_quality = _amean([rouge, relevance, correctness])
     if retain_quality is not None:
         data["retain_quality"] = retain_quality
     retain_linguistic = _component_amean(data, MUSE_RETAIN_LINGUISTIC_COMPONENTS)
@@ -1197,6 +1227,14 @@ def main():
         help="Which evaluation results to render (default: tofu).",
     )
     ap.add_argument(
+        "--mean",
+        choices=["harmonic", "arithmetic"],
+        default="harmonic",
+        help="TOFU only. How to combine score components: 'harmonic' (default, "
+             "a single weak component drags the score down) or 'arithmetic' "
+             "(components averaged independently, as RWKU does).",
+    )
+    ap.add_argument(
         "--data-split",
         choices=["News", "Books"],
         default=None,
@@ -1249,6 +1287,8 @@ def main():
         help="Only show models matching this case-insensitive name prefix.",
     )
     args = ap.parse_args()
+    # Must be set before load_summary() runs, which happens inside run_tofu().
+    globals()["TOFU_MEAN"] = args.mean
     if args.eval_dir is None:
         args.eval_dir = {
             "rwku": DEFAULT_RWKU_EVAL_DIR,
