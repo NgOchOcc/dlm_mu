@@ -19,6 +19,7 @@
 #   scripts/dlm/muse/selective_sweep.sh dream 0,1,2,3
 #   scripts/dlm/muse/selective_sweep.sh "dream llada1.5" 0,1,2,3 News
 #   BETAS="2 5 10 20 50" scripts/dlm/muse/selective_sweep.sh dream 0,1,2,3
+#   PAIRS="1:0.1 2:0.1 10:0.2" scripts/dlm/muse/selective_sweep.sh dream 0,1,2,3
 #   METHOD=SDU scripts/dlm/muse/selective_sweep.sh dream 0,1,2,3
 set -euo pipefail
 # Run from the repository root; see scripts/dlm/muse/run.sh for why this checks
@@ -45,12 +46,24 @@ PRESERVE_WEIGHTS="${PRESERVE_WEIGHTS:-0.1}"
 [[ -n "$DEVICES" ]] || die "no GPUs: pass them as the second argument, e.g. \
     scripts/dlm/muse/selective_sweep.sh dream 0,1,2,3"
 
+# PAIRS names the exact (beta, preserve_weight) points to run, as a
+# space-separated list of "beta:pw". Use it when the wanted points are not a
+# full BETAS x PRESERVE_WEIGHTS grid -- e.g. a beta sweep at one preserve
+# weight plus a preserve sweep at one beta, which as a grid would be mostly
+# configurations nobody asked for.
 CONFIGS=()
-for beta in $BETAS; do
-    for pw in $PRESERVE_WEIGHTS; do
-        CONFIGS+=("${beta}:${pw}")
+if [[ -n "${PAIRS:-}" ]]; then
+    for pair in $PAIRS; do
+        [[ "$pair" == *:* ]] || die "PAIRS entries must look like beta:pw, got '$pair'"
+        CONFIGS+=("$pair")
     done
-done
+else
+    for beta in $BETAS; do
+        for pw in $PRESERVE_WEIGHTS; do
+            CONFIGS+=("${beta}:${pw}")
+        done
+    done
+fi
 
 LOG_DIR="${LOG_DIR:-logs/muse_${METHOD}_sweep}"
 mkdir -p "$LOG_DIR"
@@ -60,8 +73,12 @@ echo "  method   : ${METHOD}"
 echo "  models   : ${MODELS}"
 echo "  splits   : ${DATA_SPLITS}"
 echo "  gpus     : ${DEVICES}"
-echo "  betas    : ${BETAS}"
-echo "  pweights : ${PRESERVE_WEIGHTS}"
+if [[ -n "${PAIRS:-}" ]]; then
+    echo "  pairs    : ${PAIRS}"
+else
+    echo "  betas    : ${BETAS}"
+    echo "  pweights : ${PRESERVE_WEIGHTS}"
+fi
 echo "  runs     : $(( ${#CONFIGS[@]} * $(wc -w <<< "$MODELS") ))"
 echo "  logs     : ${LOG_DIR}/"
 echo

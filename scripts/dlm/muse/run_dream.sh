@@ -1,7 +1,16 @@
 #!/usr/bin/env bash
 # Full MUSE run for Dream: the five baselines, then the SelectiveUnlearning
-# sweep, over both corpora. Every training run is evaluated as soon as it
-# finishes, and the knowmem SFT phase is trained first if it is missing.
+# sweep, over both corpora.
+#
+# The SFT phases are assumed done -- this script only unlearns. Each method
+# trains for UNLEARN_EPOCHS (3) with a checkpoint kept after every epoch, and
+# every one of those checkpoints is evaluated into its own directory:
+#
+#   saves/eval/muse_<MODEL>_<split>_<Method>_ep1/MUSE_SUMMARY.json
+#   saves/eval/muse_<MODEL>_<split>_<Method>_ep2/...
+#   saves/eval/muse_<MODEL>_<split>_<Method>_ep3/...
+#
+# so a method's quality can be tracked across epochs rather than only at the end.
 #
 #   scripts/dlm/muse/run_dream.sh
 #   scripts/dlm/muse/run_dream.sh 0,1,2,3
@@ -19,6 +28,12 @@ GPUS_ARG="${1:-${GPUS:-0,1,2,3}}"
 DATA_SPLITS="${DATA_SPLITS:-News Books}"
 
 BASELINES="${BASELINES:-DiffusionGA,DiffusionWGA,DiffusionNPO,DiffusionSimNPO,DiffusionBST}"
+
+# Three epochs for every method, checkpointed and evaluated after each one.
+# The SFT checkpoints already exist, so both SFT phases are skipped.
+export UNLEARN_EPOCHS="${UNLEARN_EPOCHS:-3}"
+export SDU_EPOCHS="${SDU_EPOCHS:-3}"
+export KNOWMEM_SFT="${KNOWMEM_SFT:-0}"
 # A beta sweep at pw=0.1 plus a preserve sweep at beta=10 -- not a full grid,
 # hence PAIRS rather than BETAS x PRESERVE_WEIGHTS.
 PAIRS="${PAIRS:-1:0.1 2:0.1 5:0.1 10:0.1 20:0.1 10:0.2 10:0.4 10:0.6 10:1.0}"
@@ -26,6 +41,7 @@ PAIRS="${PAIRS:-1:0.1 2:0.1 5:0.1 10:0.1 20:0.1 10:0.2 10:0.4 10:0.6 10:1.0}"
 echo "=== MUSE: ${MODEL} ==="
 echo "  gpus      : ${GPUS_ARG}"
 echo "  splits    : ${DATA_SPLITS}"
+echo "  epochs    : ${UNLEARN_EPOCHS} (evaluated after each)"
 echo "  baselines : ${BASELINES//,/ }"
 echo "  pairs     : ${PAIRS}"
 echo

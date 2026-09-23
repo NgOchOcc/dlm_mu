@@ -150,6 +150,14 @@ precompute_sdu_cache() {
 }
 
 # ------------------------------------------------------------ unlearn --------
+# Epochs for a method: the selective family trains longer than the baselines.
+epochs_for() {
+    case "$1" in
+        DiffusionSDU|DiffusionSelectiveUnlearning) echo "$SDU_EPOCHS" ;;
+        *) echo "$UNLEARN_EPOCHS" ;;
+    esac
+}
+
 run_unlearn() {
     local trainer=$1 data_split=$2 start=$3 task=$4 cache=$5
     local port; port=$(free_port "${MAIN_PORT:-29500}")
@@ -157,7 +165,7 @@ run_unlearn() {
     # loss_weight_type, so the override is valid for all of them (SDU accepts it
     # via DiffusionFinetuneTrainer even though its own compute_loss ignores it).
     local exp="unlearn/muse/dlm_forget_only_knowmem"
-    local epochs="${UNLEARN_EPOCHS}"
+    local epochs; epochs=$(epochs_for "$trainer")
     local extra=("trainer.method_args.loss_weight_type=\"${LOSS_WEIGHT}\"")
     # Both selective methods take the same beta / preserve_weight loss balance
     # and the same longer schedule; only SDU additionally reads its query mask
@@ -173,7 +181,6 @@ run_unlearn() {
     esac
     case "$trainer" in
         DiffusionSDU|DiffusionSelectiveUnlearning)
-            epochs="${SDU_EPOCHS}"
             extra+=("trainer.method_args.beta=${SDU_BETA:-10.0}"
                     "trainer.method_args.preserve_weight=${SDU_PRESERVE_WEIGHT:-0.1}")
             ;;
@@ -192,7 +199,8 @@ run_unlearn() {
         trainer.args.num_train_epochs="${epochs}" \
         trainer.args.per_device_train_batch_size="${TRAIN_BS}" \
         trainer.args.gradient_accumulation_steps="${GRAD_ACCUM}" \
-        trainer.args.save_strategy="${UNLEARN_SAVE_STRATEGY:-no}" \
+        trainer.args.save_strategy="${UNLEARN_SAVE_STRATEGY:-epoch}" \
+        +trainer.args.save_total_limit="${UNLEARN_SAVE_TOTAL_LIMIT:-0}" \
         trainer.args.ddp_find_unused_parameters=true \
         trainer.args.gradient_checkpointing="${GRAD_CKPT}" \
         trainer.args.do_eval=false \
@@ -297,7 +305,11 @@ run_for_model() {
             out="saves/unlearn/${task}"
             cache="saves/sdu_cache/muse_${MODEL}_${data_split}.json"
 
-            if [[ -f "saves/eval/${task}/MUSE_SUMMARY.json" ]] && ! flag_on "${OVERWRITE:-}"; then
+            # Per-epoch results live in <task>_ep<N>, so completion is judged
+            # by the last epoch's summary rather than the bare task name.
+            last_ep_task="${task}_ep$(epochs_for "$trainer")"
+            if [[ -f "saves/eval/${last_ep_task}/MUSE_SUMMARY.json" ]] \
+                && ! flag_on "${OVERWRITE:-}"; then
                 echo "skip  ${task} (already done; OVERWRITE=1 to redo)" >&2
                 continue
             fi
@@ -314,8 +326,42 @@ run_for_model() {
                 continue
             fi
 
-            flag_on "${NO_EVAL:-}" || muse_eval "$task" "$out" "$data_split" \
-                || { echo "[warn] eval FAILED for ${task}; continuing" >&2; fail=1; }
+            # Evaluate every epoch separately, each into its own directory, so
+            # a method's quality can be tracked across epochs rather than only
+            # at the end. HF names them checkpoint-<step>, so they are ordered
+            # by step number and numbered back into epochs.
+            if ! flag_on "${NO_EVAL:-}"; then
+                # Built with a read loop rather than mapfile, which bash 3.2
+                # (the macOS default) does not have.
+                # Sorted on the step number alone: `sort -t- -k2 -n` over full
+                # paths picks up the wrong field, since model names contain
+                # hyphens too ("Dream-v0-Instruct-7B" makes field 2 "v0").
+                epoch_ckpts=()
+                while IFS= read -r ckpt_dir; do
+                    [[ -n "$ckpt_dir" ]] && epoch_ckpts+=("$ckpt_dir")
+                done < <(
+                    find "$out" -maxdepth 1 -name 'checkpoint-*' -type d 2>/dev/null \
+                        | sed 's|.*/checkpoint-\([0-9]*\)$|\1 &|' \
+                        | sort -n -k1,1 \
+                        | cut -d' ' -f2-
+                )
+                if (( ${#epoch_ckpts[@]} == 0 )); then
+                    echo "[warn] no per-epoch checkpoints under ${out}; evaluating final only" >&2
+                    epoch_ckpts=("$out")
+                fi
+                ep=0
+                for ckpt in "${epoch_ckpts[@]}"; do
+                    ep=$((ep + 1))
+                    ep_task="${task}_ep${ep}"
+                    if [[ -f "saves/eval/${ep_task}/MUSE_SUMMARY.json" ]] \
+                        && ! flag_on "${OVERWRITE:-}"; then
+                        echo "skip  eval ${ep_task} (already done)" >&2
+                        continue
+                    fi
+                    muse_eval "$ep_task" "$ckpt" "$data_split" \
+                        || { echo "[warn] eval FAILED for ${ep_task}; continuing" >&2; fail=1; }
+                done
+            fi
         done
     done
 }

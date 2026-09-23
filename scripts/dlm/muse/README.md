@@ -31,6 +31,28 @@ Phase 2 exists because unlearning and evaluation both use the knowmem QA
 format, while phase 1 only ever sees raw text — without it the model is scored
 in a format it was never trained on.
 
+## Everything for one model
+
+Two wrappers run the whole sequence -- knowmem SFT if missing, the five
+baselines, then the SelectiveUnlearning sweep -- and print the results table at
+the end:
+
+```bash
+bash scripts/dlm/muse/run_dream.sh 0,1,2,3
+bash scripts/dlm/muse/run_llada.sh 0,1,2,3
+```
+
+| Variable | Default | Effect |
+|---|---|---|
+| `DATA_SPLITS` | `News Books` | Corpora to cover |
+| `BASELINES` | GA, WGA, NPO, SimNPO, BST | Baseline method list |
+| `PAIRS` | 9 (beta, pw) points | SelectiveUnlearning configurations |
+| `SKIP_BASELINES=1` | off | Sweep only |
+| `SKIP_SWEEP=1` | off | Baselines only |
+
+The steps below are the same work done by hand, for when you want to run one
+phase at a time.
+
 ## Step 1 — Knowmem SFT (phase 2), both models
 
 Trains Dream first, then LLaDA-1.5, and evaluates each checkpoint.
@@ -96,9 +118,13 @@ METHODS=DiffusionSelectiveUnlearning \
   bash scripts/dlm/muse/run.sh llada1.5 0,1,2,3 News
 ```
 
-To sweep the beta / preserve-weight grid instead of a single configuration:
+To sweep several configurations instead of one. `PAIRS` names the exact
+(beta, preserve_weight) points; `BETAS` x `PRESERVE_WEIGHTS` builds a full grid:
 
 ```bash
+PAIRS="1:0.1 2:0.1 5:0.1 10:0.1 20:0.1 10:0.2 10:0.4 10:0.6 10:1.0" \
+  bash scripts/dlm/muse/selective_sweep.sh dream 0,1,2,3 "News Books"
+
 BETAS="2 5 10 20 50" PRESERVE_WEIGHTS="0.1" \
   bash scripts/dlm/muse/selective_sweep.sh "dream llada1.5" 0,1,2,3 News
 ```
