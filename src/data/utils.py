@@ -1,3 +1,5 @@
+import os
+
 import torch
 import datasets
 import numpy as np
@@ -9,6 +11,44 @@ IGNORE_INDEX = -100  # TODO put in common constants
 logger = logging.getLogger("data")
 
 
+def _local_dataset_dir(path, name, split):
+    """Where scripts/dlm/muse/download_data.py saves (repo, config, split)."""
+    root = os.environ.get("DLM_DATASET_DIR")
+    if not root:
+        return None
+    return os.path.join(root, path.replace("/", "__"), name or "default", split or "")
+
+
+def _load_dataset_maybe_local(path, **kwargs):
+    """Load from a pre-downloaded directory when one exists, else from the Hub.
+
+    Datasets saved with `save_to_disk` are Arrow directories that
+    `load_dataset` cannot read, so they are loaded with `load_from_disk`.
+    Setting DLM_DATASET_DIR makes a run use them and skip the Hub entirely;
+    anything not found there still falls back to a normal Hub load.
+    """
+    name, split = kwargs.get("name"), kwargs.get("split")
+
+    # "a+b" concatenates splits; each part was saved separately, so load them
+    # individually and join. Without this the combined name matches no
+    # directory and the whole load silently falls back to the Hub.
+    if split and "+" in split:
+        parts = [p.strip() for p in split.split("+") if p.strip()]
+        dirs = [_local_dataset_dir(path, name, p) for p in parts]
+        if all(d and os.path.isdir(d) for d in dirs):
+            logger.info(f"loading {path} split {split} from {os.path.dirname(dirs[0])}")
+            return datasets.concatenate_datasets(
+                [datasets.load_from_disk(d) for d in dirs]
+            )
+    else:
+        local = _local_dataset_dir(path, name, split)
+        if local and os.path.isdir(local):
+            logger.info(f"loading {path} from {local}")
+            return datasets.load_from_disk(local)
+
+    return datasets.load_dataset(path, **kwargs)
+
+
 def load_hf_dataset(path, filter_column=None, filter_value=None, **kwargs):
     """Load a HF dataset, optionally keeping only rows matching a column value.
 
@@ -18,7 +58,7 @@ def load_hf_dataset(path, filter_column=None, filter_value=None, **kwargs):
     values. Raises if the filter matches nothing, so a typo in an entity name
     fails loudly instead of silently training on an empty set.
     """
-    dataset = datasets.load_dataset(path, **kwargs)
+    dataset = _load_dataset_maybe_local(path, **kwargs)
     # A null `filter_value` means "no filtering": configs wire `filter_column`
     # in statically and leave the value unset (e.g. eval.rwku_dlm.target_subject
     # = null) to evaluate the full test set.

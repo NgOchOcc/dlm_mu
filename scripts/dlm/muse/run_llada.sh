@@ -34,6 +34,15 @@ BASELINES="${BASELINES:-DiffusionGA,DiffusionWGA,DiffusionNPO,DiffusionSimNPO,Di
 export UNLEARN_EPOCHS="${UNLEARN_EPOCHS:-3}"
 export SDU_EPOCHS="${SDU_EPOCHS:-3}"
 export KNOWMEM_SFT="${KNOWMEM_SFT:-0}"
+
+# Read the datasets from disk instead of the Hub. download_data.py saves them
+# under DLM_DATASET_DIR; anything missing there still falls back to a Hub load,
+# so an incomplete download degrades rather than fails.
+export DLM_DATASET_DIR="${DLM_DATASET_DIR:-data/muse}"
+if [[ ! -d "$DLM_DATASET_DIR" ]]; then
+    echo "note: ${DLM_DATASET_DIR} not found -- datasets will come from the Hub." >&2
+    echo "      Run: python3 scripts/dlm/muse/download_data.py" >&2
+fi
 # A beta sweep at pw=0.1 plus a preserve sweep at beta=10 -- not a full grid,
 # hence PAIRS rather than BETAS x PRESERVE_WEIGHTS.
 PAIRS="${PAIRS:-1:0.1 2:0.1 5:0.1 10:0.1 20:0.1 10:0.2 10:0.4 10:0.6 10:1.0}"

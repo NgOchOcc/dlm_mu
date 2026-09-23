@@ -31,6 +31,28 @@ Phase 2 exists because unlearning and evaluation both use the knowmem QA
 format, while phase 1 only ever sees raw text — without it the model is scored
 in a format it was never trained on.
 
+## Step 0 — Download the datasets
+
+Saves every MUSE split the pipeline reads to `data/muse/`, so training and
+evaluation never contact the Hub:
+
+```bash
+python3 scripts/dlm/muse/download_data.py
+python3 scripts/dlm/muse/download_data.py --corpora News        # one corpus
+python3 scripts/dlm/muse/download_data.py --out-dir /scratch/muse
+```
+
+The runners set `DLM_DATASET_DIR=data/muse` themselves. Point it elsewhere if
+you downloaded to another path:
+
+```bash
+DLM_DATASET_DIR=/scratch/muse bash scripts/dlm/muse/run_dream.sh 0,1,2,3
+```
+
+Anything missing from that directory still falls back to a Hub load, so a
+partial download degrades rather than fails. To make a Hub call an error
+instead, add `HF_DATASETS_OFFLINE=1`.
+
 ## Everything for one model
 
 Two wrappers run the whole sequence -- knowmem SFT if missing, the five
