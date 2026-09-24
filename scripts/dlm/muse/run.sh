@@ -28,8 +28,9 @@
 #                              (default: all six). "Diffusion" prefix optional.
 #   NO_EVAL=1                  skip every evaluation
 #   OVERWRITE=1                redo work that already has results on disk
-#   UNLEARN_EPOCHS             epochs for every method except SDU (default: 2)
-#   SDU_EPOCHS                 epochs for SDU/SelectiveUnlearning (default: 10)
+#   UNLEARN_EPOCHS             epochs for every method except SDU (default: 5)
+#   SDU_EPOCHS                 epochs for SDU/SelectiveUnlearning (default: 5)
+#   UNLEARN_LR                 learning rate for every method (default: 3e-6)
 #   NO_UNLEARN=1               stop after the SFT phases
 #   KNOWMEM_SFT=0              skip the knowmem QA SFT phase (default: on)
 #   KNOWMEM_SFT_EPOCHS         epochs for that phase (default: 5)
@@ -57,8 +58,12 @@ DATA_SPLITS="${3:-News Books}"
 # case "$SFT" in auto|skip|only|force) ;; *) die "SFT must be auto|skip|only|force, got '$SFT'" ;; esac
 # SFT_EPOCHS="${SFT_EPOCHS:-50}"
 
-UNLEARN_EPOCHS="${UNLEARN_EPOCHS:-2}"
-SDU_EPOCHS="${SDU_EPOCHS:-10}"
+# Five epochs for every method, checkpointed and evaluated after each one.
+UNLEARN_EPOCHS="${UNLEARN_EPOCHS:-5}"
+SDU_EPOCHS="${SDU_EPOCHS:-5}"
+# Applies to every method. Set here rather than in the experiment configs so a
+# single value covers direct run.sh calls, the sweep, and both wrappers.
+UNLEARN_LR="${UNLEARN_LR:-3e-6}"
 KNOWMEM_SFT="${KNOWMEM_SFT:-1}"
 KNOWMEM_SFT_EPOCHS="${KNOWMEM_SFT_EPOCHS:-5}"
 RUN_TAG="${RUN_TAG:-}"
@@ -167,6 +172,9 @@ run_unlearn() {
     local exp="unlearn/muse/dlm_forget_only_knowmem"
     local epochs; epochs=$(epochs_for "$trainer")
     local extra=("trainer.method_args.loss_weight_type=\"${LOSS_WEIGHT}\"")
+    if [[ -n "$UNLEARN_LR" ]]; then
+        extra+=("trainer.args.learning_rate=${UNLEARN_LR}")
+    fi
     # Both selective methods take the same beta / preserve_weight loss balance
     # and the same longer schedule; only SDU additionally reads its query mask
     # from the offline cache.

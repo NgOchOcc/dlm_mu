@@ -3,12 +3,13 @@
 # sweep, over both corpora.
 #
 # The SFT phases are assumed done -- this script only unlearns. Each method
-# trains for UNLEARN_EPOCHS (3) with a checkpoint kept after every epoch, and
+# trains for UNLEARN_EPOCHS (5) with a checkpoint kept after every epoch, and
 # every one of those checkpoints is evaluated into its own directory:
 #
 #   saves/eval/muse_<MODEL>_<split>_<Method>_ep1/MUSE_SUMMARY.json
 #   saves/eval/muse_<MODEL>_<split>_<Method>_ep2/...
-#   saves/eval/muse_<MODEL>_<split>_<Method>_ep3/...
+#   ...
+#   saves/eval/muse_<MODEL>_<split>_<Method>_ep5/...
 #
 # so a method's quality can be tracked across epochs rather than only at the end.
 #
@@ -31,8 +32,6 @@ BASELINES="${BASELINES:-DiffusionGA,DiffusionWGA,DiffusionNPO,DiffusionSimNPO,Di
 
 # Three epochs for every method, checkpointed and evaluated after each one.
 # The SFT checkpoints already exist, so both SFT phases are skipped.
-export UNLEARN_EPOCHS="${UNLEARN_EPOCHS:-3}"
-export SDU_EPOCHS="${SDU_EPOCHS:-3}"
 export KNOWMEM_SFT="${KNOWMEM_SFT:-0}"
 
 # Read the datasets from disk instead of the Hub. download_data.py saves them
@@ -50,7 +49,8 @@ PAIRS="${PAIRS:-1:0.1 2:0.1 5:0.1 10:0.1 20:0.1 10:0.2 10:0.4 10:0.6 10:1.0}"
 echo "=== MUSE: ${MODEL} ==="
 echo "  gpus      : ${GPUS_ARG}"
 echo "  splits    : ${DATA_SPLITS}"
-echo "  epochs    : ${UNLEARN_EPOCHS} (evaluated after each)"
+echo "  epochs    : ${UNLEARN_EPOCHS:-5} (evaluated after each)"
+echo "  lr        : ${UNLEARN_LR:-3e-6}"
 echo "  baselines : ${BASELINES//,/ }"
 echo "  pairs     : ${PAIRS}"
 echo
