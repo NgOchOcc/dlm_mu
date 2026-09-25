@@ -1160,10 +1160,11 @@ def load_muse_run(run_dir):
     return values or None
 
 
-# Which mean combines the MUSE components, mirroring TOFU's --mean. The
-# default is "arithmetic"; "harmonic" punishes the weakest component, so a
-# single zero drives the whole score to zero. Set by --mean.
-MUSE_MEAN = "arithmetic"
+# Which mean joins the classic and judge halves of each MUSE score, mirroring
+# TOFU's --mean. The default is "harmonic": it punishes the weaker half, so a
+# model that still reproduces the forget text cannot be rescued by strong judge
+# scores. "arithmetic" weighs the halves independently.
+MUSE_MEAN = "harmonic"
 
 
 def _muse_combine(values):
@@ -1174,19 +1175,20 @@ def compute_muse_scores(raw):
     data = dict(raw)
 
     # Forget: score knowmem and verbmem separately, then average the two.
-    # Within each split the three signals enter the harmonic mean directly,
-    # with equal weight:
-    #   EQ_split = harmonic(1 - ROUGE, 1 - Correctness, Relevance)
+    # Within each split the classic metric and the two judge metrics form two
+    # halves, so ROUGE keeps half the weight instead of being outvoted 2:1:
+    #   EQ_split = combine(1 - ROUGE, average(1 - Correctness, Relevance))
     # _score_unit already applies the inversion for "lower is better", so
     # `rouge` is 1 - ROUGE and `correctness` is 1 - Correctness/10 here.
-    # Harmonic means punish the weakest term: a single zero (e.g. the model
-    # still reproduces the text verbatim) drives EQ for that split to zero.
+    # The default harmonic mean punishes the weaker half: if the model still
+    # reproduces the text verbatim (ROUGE high), a strong judge half cannot
+    # rescue EQ. --mean arithmetic weighs the two halves independently.
     forget_split_scores = []
     for split in ("knowmem", "verbmem"):
         rouge = _score_unit(data.get(f"forget_{split}_ROUGE"), "lower")
         relevance = _score_unit(data.get(f"forget_{split}_Relevance"), "judge_higher")
         correctness = _score_unit(data.get(f"forget_{split}_Correctness"), "judge_lower")
-        score = _hmean([rouge, correctness, relevance])
+        score = _muse_combine([rouge, _amean([correctness, relevance])])
         if score is not None:
             forget_split_scores.append(score)
     if forget_split_scores:
@@ -1312,7 +1314,7 @@ def main():
         help="How to combine score components: 'harmonic' (a "
              "single weak component drags the score down) or 'arithmetic' "
              "(components averaged independently). Defaults to harmonic for "
-             "TOFU and arithmetic for RWKU/MUSE.",
+             "TOFU/MUSE and arithmetic for RWKU.",
     )
     ap.add_argument(
         "--data-split",
