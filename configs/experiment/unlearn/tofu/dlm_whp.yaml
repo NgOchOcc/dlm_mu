@@ -1,0 +1,45 @@
+# @package _global_
+# WHP (Eldan & Russinovich 2023) for masked-diffusion LMs on TOFU: fine-tune on
+# the original forget QA with precomputed generic-prediction labels as targets.
+# Forget-only, as in the paper. The collator keeps the dataset index, which keys
+# the label file.
+defaults:
+  - override /model: LLaDA-8B-Instruct
+  - override /trainer: DiffusionWHP
+  - override /data: unlearn
+  - override /data/datasets@data.forget: TOFU_QA_forget
+  - override /data/datasets@data.retain: null
+  - override /collator: DataCollatorForSupervisedDatasetwithIndex
+  - override /eval: tofu_dlm
+
+forget_split: forget10
+retain_split: retain90
+holdout_split: holdout10
+question_key: "question"
+
+eval:
+  tofu_dlm:
+    forget_split: ${forget_split}
+    holdout_split: ${holdout_split}
+    overwrite: true
+    question_key: ${question_key}
+
+data:
+  anchor: forget
+  forget:
+    TOFU_QA_forget:
+      args:
+        hf_args:
+          name: ${forget_split}
+
+trainer:
+  args:
+    warmup_epochs: 1.0
+    learning_rate: 1e-5
+    weight_decay: 0.01
+    num_train_epochs: 20
+    do_eval: false
+    eval_on_start: false
+    eval_strategy: "no"  # evaluated once afterwards by unlearn.sh / not needed
+
+task_name: ???

@@ -29,6 +29,7 @@ from trainer.dlm.unlearn import (
     DiffusionBST,
     DiffusionSelectiveUnlearning,
     DiffusionSDU,
+    DiffusionWHP,
 )
 
 
@@ -132,3 +133,4 @@ _register_trainer(DiffusionMDU)
 _register_trainer(DiffusionBST)
 _register_trainer(DiffusionSelectiveUnlearning)
 _register_trainer(DiffusionSDU)
+_register_trainer(DiffusionWHP)

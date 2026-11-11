@@ -196,7 +196,7 @@ class DiffusionSelectiveUnlearning(DiffusionUnlearnTrainer):
         "before",
     }
 
-    def __init__(self, beta=1.0, preserve_weight=1.0, *args, **kwargs):
+    def __init__(self, beta=1.0, preserve_weight=1.0, forget_all=False, *args, **kwargs):
         beta = float(beta)
         preserve_weight = float(preserve_weight)
         if not math.isfinite(beta) or beta < 0.0:
@@ -210,6 +210,8 @@ class DiffusionSelectiveUnlearning(DiffusionUnlearnTrainer):
         super().__init__(*args, **kwargs)
         self.beta = beta
         self.preserve_weight = preserve_weight
+        # q* (and the forget loss) at every answer-text position except copied subjects, not only entity words
+        self.forget_all = bool(forget_all)
         self.mask_id = self.processing_class.mask_token_id
         self.pad_id = self.processing_class.pad_token_id
         self.vocab_size = len(self.processing_class)
@@ -354,6 +356,12 @@ class DiffusionSelectiveUnlearning(DiffusionUnlearnTrainer):
         answer_entity_mask = self.answer_entity_mask(input_ids, answer_mask, answer_copy_mask)
         answer_forget_mask = answer_entity_mask & ~answer_copy_mask
         answer_hide_mask = answer_copy_mask | answer_forget_mask
+        if self.forget_all:  # entity words stay always hidden; the EOS pad and terminator keep p_cond
+            stops = input_ids == self.processing_class.eos_token_id
+            terminators = self._get_terminator_tensor(input_ids.device)
+            if terminators is not None:
+                stops |= torch.isin(input_ids, terminators)
+            answer_forget_mask = answer_mask & ~answer_copy_mask & ~stops
 
         timesteps = self._sample_timesteps(batch_size, input_ids.device)
         mask_probability = 1.0 - self.scheduler(timesteps).unsqueeze(1).expand(batch_size, sequence_length)

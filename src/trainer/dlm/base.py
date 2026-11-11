@@ -16,6 +16,7 @@ class DiffusionFinetuneTrainer(FinetuneTrainer):
         loss_norm_type="token",
         right_shift_logits=False,
         eos_pad_to=None,
+        time_beta=None,
         *args,
         **kwargs,
     ):
@@ -28,6 +29,7 @@ class DiffusionFinetuneTrainer(FinetuneTrainer):
             raise ValueError("eos_pad_to must be a positive token count or None")
         self.scheduler = make_alpha_scheduler(scheduler_name)
         self.time_epsilon = time_epsilon
+        self.time_beta = time_beta  # (a, b): sample t from Beta(a, b) instead of uniformly
         self.loss_weight_type = loss_weight_type
         self.loss_norm_type = loss_norm_type
         self.right_shift_logits = right_shift_logits
@@ -198,10 +200,13 @@ class DiffusionFinetuneTrainer(FinetuneTrainer):
         return input_ids, labels, attention_mask
 
     def _sample_timesteps(self, batch_size, device):
-        """Sample diffusion times uniformly on the configured interval."""
-        return self.time_epsilon + (1 - self.time_epsilon) * torch.rand(
-            batch_size, device=device
-        )
+        """Sample diffusion times on [time_epsilon, 1]: uniformly, or Beta(*time_beta) rescaled."""
+        if self.time_beta is None:
+            u = torch.rand(batch_size, device=device)
+        else:
+            a, b = (torch.tensor(float(x), device=device) for x in self.time_beta)
+            u = torch.distributions.Beta(a, b).sample((batch_size,))
+        return self.time_epsilon + (1 - self.time_epsilon) * u
 
     def _sample_and_denoise(self, model, input_ids, labels, attention_mask=None):
         assert self.processing_class.padding_side == "right"

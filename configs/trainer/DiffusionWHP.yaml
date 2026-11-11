@@ -1,0 +1,7 @@
+defaults:
+  - DiffusionFinetune
+
+handler: DiffusionWHP
+method_args:
+  # JSON from scripts/dlm/whp_generic_labels.py ({"labels": {index: [token ids, -1 = no loss]}}).
+  generic_labels_path: ???

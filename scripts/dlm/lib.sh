@@ -189,6 +189,7 @@ method_setup() {
         DiffusionBST)       EXP=unlearn/tofu/dlm_bst ; RETAIN_ALREADY_NULL=1 ;;
         DiffusionSDU)       EXP=unlearn/tofu/dlm_sdu ; RETAIN_ALREADY_NULL=1 ;;
         DiffusionSelectiveUnlearning) EXP=unlearn/tofu/dlm_selective_unlearning ; RETAIN_ALREADY_NULL=1 ;;
+        DiffusionWHP)       EXP=unlearn/tofu/dlm_whp ; RETAIN_ALREADY_NULL=1 ;;
         *)                  EXP=unlearn/tofu/dlm ;;
     esac
     [[ -n "$EXP_OVERRIDE" ]] && EXP="$EXP_OVERRIDE"
@@ -204,7 +205,7 @@ tofu_train() {
     CUDA_VISIBLE_DEVICES=${GPUS} accelerate launch \
         --config_file "${TRAIN_ACCEL}" --num_processes "${nproc}" --main_process_port "${port}" \
         src/train.py \
-        experiment=finetune/tofu/dlm \
+        experiment=${TRAIN_EXP:-finetune/tofu/dlm} \
         model=${MODEL} \
         task_name=${task} \
         trainer.args.num_train_epochs=${epochs} \

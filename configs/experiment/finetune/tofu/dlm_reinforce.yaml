@@ -1,0 +1,40 @@
+# @package _global_
+# WHP reinforced model: keep fine-tuning the TOFU target model on the forget
+# split only (Eldan & Russinovich 2023, Sec. 2.1; 3 epochs as in the paper).
+defaults:
+  - override /model: LLaDA-8B-Instruct
+  - override /trainer: DiffusionFinetune
+  - override /data/datasets@data.train: TOFU_QA_forget
+  - override /eval: tofu_dlm
+
+mode: finetune
+
+forget_split: forget10
+holdout_split: holdout10
+retain_logs_path: null
+
+data:
+  train:
+    TOFU_QA_forget:
+      args:
+        hf_args:
+          name: ${forget_split}
+
+eval:
+  tofu_dlm:
+    forget_split: ${forget_split}
+    holdout_split: ${holdout_split}
+    retain_logs_path: ${retain_logs_path}
+    overwrite: true
+
+trainer:
+  args:
+    learning_rate: 1e-5
+    weight_decay: 0.01
+    warmup_epochs: 1.0
+    num_train_epochs: 3
+    do_eval: false
+    eval_on_start: false
+    eval_strategy: "no"  # evaluated once afterwards by unlearn.sh / not needed
+
+task_name: ???
